@@ -9,27 +9,41 @@ Para cumplir con los requisitos del proyecto (separación de módulos offline/on
 ### A. Pipeline Offline (Pre-procesamiento)
 Este bloque (`offline_pipeline.py`) se encarga de ingerir y preparar los datos de forma asíncrona antes de que el usuario interactúe con el sistema. 
 
-**Flujo:**
-1. **Adquisición y Limpieza (`ingestion.py`)**: Carga del corpus bruto (JSON/CSV). Se aplican técnicas de limpieza de texto, normalización de caracteres y división en chunks si los documentos son demasiado extensos.
-2. **Modelado de Tópicos (`topics.py`)**: Utilizando `BERTopic` + `UMAP` + `HDBSCAN`, se agrupa el corpus para descubrir temáticas latentes. Estos tópicos se precalculan y se asocian como metadatos a cada ítem de recomendación.
-3. **Indexación Vectorial (`retriever.py`)**: Se calculan los embeddings semánticos (`SentenceTransformers`) y los índices léxicos (`BM25`) de todos los ítems, persistiendo esta información localmente (ej. ChromaDB o archivos serializados).
+## 2. Pipeline de Datos (ETL)
 
-### B. Bucle Online (Interacción en Tiempo Real)
-Este bloque (`main.py`) mantiene vivo el sistema y gestiona la conversación con el usuario apoyándose en una arquitectura basada en **Agentes y Enrutamiento**.
+### 2.1. Ingestión y Limpieza (`ingestion.py`)
+*   **Fuentes**: `Processed_recipes.csv` y `Processed_interactions.csv`.
+*   **Campos Clave**: 
+    *   Recetas: `name`, `steps`, `description`, `ingredients`, `tags`.
+    *   Interacciones: `review`, `corrected_rating`.
+*   **Proceso**: Unión de datasets por `recipe_id` y normalización de textos (limpieza de HTML, minúsculas).
 
-**Flujo:**
-1. **Router Multi-Agente (`agent.py`)**: El modelo de lenguaje (LLM) evalúa la intención del usuario usando *decodificación restringida* para garantizar la validez de la acción.
-   * *Acción RAG*: Si el usuario busca recomendaciones.
-   * *Acción Web*: Si pregunta por datos fuera del corpus (ej. actualidad).
-   * *Acción Resumen*: Si pide información muy detallada sobre un ítem específico.
-2. **Ejecución de Herramientas**:
-   * **RAG Híbrido (`retriever.py`)**: Ejecuta una búsqueda semántica y léxica, fusionando resultados mediante **RRF (Reciprocal Rank Fusion)** para evitar la pérdida de información central (LitM).
-   * **Summarizer (`summarizer.py`)**: Usa **TextRank** (grafos) para extraer las sentencias clave de reseñas largas y pasarlas como contexto condensado al LLM.
-3. **Sintetizador (`llm.py`)**: El contexto resultante de las herramientas se inyecta en un *prompt* dinámico. El LLM (ej. Gemma-3-1b-it) genera una respuesta conversacional y natural.
+### 2.2. Procesamiento Offline (`offline_pipeline.py`)
+1.  **Topic Modeling (BERTopic)**: Agrupamiento de recetas basado en `tags` e `ingredients` para identificar estilos de cocina automáticamente.
+2.  **Indexing**: Generación de embeddings de la combinación `name + description + ingredients` y almacenamiento en base de datos vectorial (ChromaDB).
+3.  **Pre-resumen**: Aplicación de **TextRank** a las recetas con exceso de reseñas para generar un "consenso" inicial.
+
+## 3. Arquitectura del Sistema Online
+
+### 3.1. Agente Orquestador (`agent.py`)
+Utiliza un modelo local con **decodificación restringida** para actuar como router.
+*   **Herramientas disponibles**:
+    *   `recomendador`: Búsqueda híbrida (RRF) en el índice de recetas.
+    *   `resumidor`: Uso de **TextRank** en tiempo real para sintetizar reseñas de una receta específica.
+    *   `calculadora`: Filtrado por metadatos (`minutes`, `calories`).
+
+### 3.2. Recuperación Híbrida (`retriever.py`)
+Combina dos rankings mediante **Reciprocal Rank Fusion (RRF)**:
+1.  **Búsqueda Semántica**: Distancia de coseno sobre los embeddings.
+2.  **Búsqueda Léxica (BM25)**: Búsqueda exacta de ingredientes específicos.
+
+### 3.3. Generación (LLM)
+*   **Contexto**: Se inyectan los `steps` de la receta y el resumen de las `reviews`.
+*   **Prompting**: Diseño de sistema para que el modelo no solo dé la receta, sino que justifique por qué encaja con los gustos del usuario.
 
 ---
 
-## 2. Cumplimiento de Requisitos del Proyecto
+## 4. Cumplimiento de Requisitos del Proyecto
 
 La arquitectura cubre holgadamente todos los requerimientos estipulados:
 
