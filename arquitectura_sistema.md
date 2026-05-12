@@ -1,5 +1,7 @@
 # Documentación Técnica: Arquitectura del Sistema Recomendador
 
+DATASET EN: www.kaggle.com/datasets/iamnotwhale/food-com-recsys-dataset?resource=download
+
 Este documento describe la arquitectura técnica propuesta para el Proyecto Final MITEX. El sistema es un **asistente interactivo especializado en recomendaciones** (el dominio exacto: películas, videojuegos, libros, etc., es configurable).
 
 ## 1. Diseño Arquitectónico Global
