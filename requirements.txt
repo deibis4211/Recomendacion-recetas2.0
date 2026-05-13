@@ -1,0 +1,6 @@
+pandas
+bertopic
+sentence-transformers
+hdbscan
+umap-learn
+numpy<2.0.0

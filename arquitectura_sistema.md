@@ -22,6 +22,8 @@ Este bloque (`offline_pipeline.py`) se encarga de ingerir y preparar los datos d
 
 ### 2.2. Procesamiento Offline (`offline_pipeline.py`)
 1.  **Topic Modeling (BERTopic)**: Agrupamiento de recetas basado en `tags` e `ingredients` para identificar estilos de cocina automáticamente.
+    *   *Representatividad (Muestreo Estratificado)*: Para el entrenamiento, se extrae una muestra de 10.000 recetas estratificadas por el tiempo de cocción (`minutes` en cuartiles). Esto garantiza un 99% de nivel de confianza y asegura que todos los perfiles de cocina (desde snacks de 5 min hasta asados de 3h) estén proporcionalmente representados en el modelo.
+    *   *Visualización e Interpretabilidad*: El sistema genera mapas interactivos de distancia inter-tópico y gráficos de barras de palabras clave (vía Plotly) para permitir la validación humana de los clústeres descubiertos.
 2.  **Indexing**: Generación de embeddings de la combinación `name + description + ingredients` y almacenamiento en base de datos vectorial (ChromaDB).
 3.  **Pre-resumen**: Aplicación de **TextRank** a las recetas con exceso de reseñas para generar un "consenso" inicial.
 
