@@ -4,3 +4,5 @@ sentence-transformers
 hdbscan
 umap-learn
 numpy<2.0.0
+chromadb
+rank-bm25

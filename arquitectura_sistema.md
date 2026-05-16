@@ -24,8 +24,9 @@ Este bloque (`offline_pipeline.py`) se encarga de ingerir y preparar los datos d
 1.  **Topic Modeling (BERTopic)**: Agrupamiento de recetas basado en `tags` e `ingredients` para identificar estilos de cocina automáticamente.
     *   *Representatividad (Muestreo Estratificado)*: Para el entrenamiento, se extrae una muestra de 10.000 recetas estratificadas por el tiempo de cocción (`minutes` en cuartiles). Esto garantiza un 99% de nivel de confianza y asegura que todos los perfiles de cocina (desde snacks de 5 min hasta asados de 3h) estén proporcionalmente representados en el modelo.
     *   *Visualización e Interpretabilidad*: El sistema genera mapas interactivos de distancia inter-tópico y gráficos de barras de palabras clave (vía Plotly) para permitir la validación humana de los clústeres descubiertos.
-2.  **Indexing**: Generación de embeddings de la combinación `name + description + ingredients` y almacenamiento en base de datos vectorial (ChromaDB).
-3.  **Pre-resumen**: Aplicación de **TextRank** a las recetas con exceso de reseñas para generar un "consenso" inicial.
+2.  **Indexing**: Generación de embeddings de la combinación `name + description + ingredients` y almacenamiento en base de datos vectorial (ChromaDB) junto con un índice léxico (BM25).
+3.  **Topic-Aware Reranking**: Integración del modelo BERTopic en el proceso de recuperación. El sistema identifica el tópico de la consulta del usuario en tiempo real y aplica un bonus de relevancia (vía Fusión RRF) a los documentos que comparten el mismo tópico, filtrando eficazmente resultados ruidosos.
+4.  **Pre-resumen**: Aplicación de **TextRank** a las recetas con exceso de reseñas para generar un "consenso" inicial.
 
 ## 3. Arquitectura del Sistema Online
 
@@ -37,9 +38,10 @@ Utiliza un modelo local con **decodificación restringida** para actuar como rou
     *   `calculadora`: Filtrado por metadatos (`minutes`, `calories`).
 
 ### 3.2. Recuperación Híbrida (`retriever.py`)
-Combina dos rankings mediante **Reciprocal Rank Fusion (RRF)**:
-1.  **Búsqueda Semántica**: Distancia de coseno sobre los embeddings.
-2.  **Búsqueda Léxica (BM25)**: Búsqueda exacta de ingredientes específicos.
+Combina dos rankings y una etapa de validación profunda:
+1.  **Recuperación Híbrida (RRF)**: Fusión de búsqueda semántica (Vectores) y léxica (BM25).
+2.  **Topic-Aware Boost**: Bonus de relevancia si el documento coincide con el tópico de la consulta detectado por BERTopic.
+3.  **Re-Ranking (Cross-Encoder)**: Uso de un modelo `ms-marco-MiniLM-L-6-v2` para re-ordenar los mejores candidatos basándose en la relación semántica exacta entre pregunta y documento, resolviendo problemas de negación (ej: "no oven").
 
 ### 3.3. Generación (LLM)
 *   **Contexto**: Se inyectan los `steps` de la receta y el resumen de las `reviews`.
@@ -54,6 +56,9 @@ La arquitectura cubre holgadamente todos los requerimientos estipulados:
 | Requisito | Implementación en la Arquitectura |
 | :--- | :--- |
 | **Embeddings** | Generados con `SentenceTransformers` en el módulo *Retriever*. |
+| **Topic Modeling** | Implementado con `BERTopic` para categorización automática y filtrado semántico (*Topic-Aware Reranking*). |
+| **Búsqueda Híbrida** | Fusión RRF de rankings semánticos y léxicos (BM25) para máxima precisión. |
+| **Precisión Semántica** | Uso de **Cross-Encoder** para re-ranking, eliminando falsos positivos y manejando negaciones. |
 | **Modelado de Tópicos** | Módulo offline *Topics* usando `BERTopic` para agrupar ítems/reseñas. |
 | **Resumen Extractivo** | Módulo *Summarizer* aplicando algoritmo `TextRank` (grafos). |
 | **LLM** | Corazón del sistema (*Router* y *Sintetizador*). Modelo local (ej. Gemma). |

@@ -223,4 +223,7 @@ __marimo__/
 
 # Datasets
 datasets/original/
+data/
+models/
+bertopic_recipes/
 *.csv
