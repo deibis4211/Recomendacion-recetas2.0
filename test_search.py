@@ -22,10 +22,11 @@ def probar_busqueda():
 
     # 3. Lista de consultas para probar la potencia del sistema
     consultas = [
-        "creamy pasta",
-        "chicken spicy",
+        "kebab",
+        "korean",
         "chocolate no oven",
-        "breakfast"
+        "teokboki",
+        "tonkatsu"
     ]
 
     for query in consultas:

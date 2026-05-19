@@ -119,6 +119,46 @@ def visualize_model(topic_model, output_dir="visualizations"):
     print(f"Visualizaciones guardadas en la carpeta '{output_dir}/'")
     print("Puedes abrirlas con cualquier navegador para explorar los datos.")
 
+def calculate_coherence_score(topic_model, corpus: list) -> float:
+    """
+    Calcula la coherencia de tópicos (C_v) usando Gensim.
+    """
+    from gensim.corpora.dictionary import Dictionary
+    from gensim.models.coherencemodel import CoherenceModel
+    import re
+
+    print("Calculando la coherencia de tópicos (C_v) con Gensim...")
+    
+    # 1. Obtener los tópicos y extraer las palabras (excluyendo el tópico -1 de ruido)
+    topics = topic_model.get_topics()
+    topic_words = []
+    for topic_id, words in topics.items():
+        if topic_id == -1:
+            continue
+        words_list = [w[0] for w in words[:10]]
+        topic_words.append(words_list)
+        
+    if not topic_words:
+        print("No se encontraron tópicos estructurados (todos se consideraron ruido). Coherencia: 0.0")
+        return 0.0
+
+    # 2. Tokenizar los documentos del corpus
+    tokenized_docs = [re.sub(r"[^a-z0-9áéíóúñü\s]", " ", doc.lower()).split() for doc in corpus]
+    
+    # 3. Crear el diccionario y calcular coherencia
+    dictionary = Dictionary(tokenized_docs)
+    coherence_model = CoherenceModel(
+        topics=topic_words,
+        texts=tokenized_docs,
+        dictionary=dictionary,
+        coherence='c_v'
+    )
+    
+    cv_score = coherence_model.get_coherence()
+    print(f"Coherencia de tópicos (C_v): {cv_score:.4f}")
+    return float(cv_score)
+
+
 if __name__ == "__main__":
     # SCRIPT DE PRUEBA / ENTRENAMIENTO OFFLINE
     print("Cargando dataset...")
@@ -161,6 +201,11 @@ if __name__ == "__main__":
     # Generamos el mapa interactivo
     visualize_model(modelo)
     
+    # Calcular la coherencia de tópicos (C_v)
+    coherence_score = calculate_coherence_score(modelo, corpus_entrenamiento)
+    print(f"\nCoherencia de tópicos calculada: {coherence_score:.4f}")
+    
     # Mostramos los tópicos generados en consola
     print("\nResumen de tópicos descubiertos:")
     print(modelo.get_topic_info().head(10))
+

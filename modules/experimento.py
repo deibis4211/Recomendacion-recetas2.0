@@ -1,6 +1,6 @@
 import os
 import pandas as pd
-from topics import train_topic_model, visualize_model
+from topics import train_topic_model, visualize_model, calculate_coherence_score
 
 # Configuramos nuevas rutas para el experimento
 MODEL_DIR_NO_SEEDS = "models/bertopic_no_seeds"
@@ -31,6 +31,11 @@ if __name__ == "__main__":
     # 4. Generamos visualizaciones específicas
     visualize_model(modelo_puro, output_dir=VIS_DIR_NO_SEEDS)
     
+    # Calcular e imprimir coherencia
+    coherence_score = calculate_coherence_score(modelo_puro, corpus)
+    
     print(f"\n¡Experimento terminado!")
     print(f"Modelo en: {MODEL_DIR_NO_SEEDS}")
+    print(f"Coherencia de tópicos calculada (C_v): {coherence_score:.4f}")
     print(f"Visualización en: {VIS_DIR_NO_SEEDS}/mapa_interactivo.html")
+
