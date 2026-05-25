@@ -1,4 +1,4 @@
-from modules.retriever import RecipeRetriever
+from modules.retriever import DEFAULT_MODEL, RecipeRetriever, _resolve_hf_model
 import os
 
 def probar_busqueda():
@@ -17,7 +17,7 @@ def probar_busqueda():
     model_path = "models/bertopic_recipes"
     if os.path.exists(model_path):
         print(f"Cargando modelo de tópicos para re-ranking desde {model_path}...")
-        topic_model = BERTopic.load(model_path, embedding_model="paraphrase-multilingual-MiniLM-L12-v2")
+        topic_model = BERTopic.load(model_path, embedding_model=_resolve_hf_model(DEFAULT_MODEL))
         retriever.set_topic_model(topic_model)
 
     # 3. Lista de consultas para probar la potencia del sistema

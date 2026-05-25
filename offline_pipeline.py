@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 from bertopic import BERTopic
-from modules.retriever import RecipeRetriever
+from modules.retriever import DEFAULT_MODEL, RecipeRetriever, _resolve_hf_model
 
 def run_offline_pipeline():
     print("=== Iniciando Pipeline de Procesamiento Offline ===")
@@ -23,7 +23,7 @@ def run_offline_pipeline():
         
     print(f"Cargando modelo de tópicos desde {model_path}...")
     try:
-        topic_model = BERTopic.load(model_path, embedding_model="paraphrase-multilingual-MiniLM-L12-v2")
+        topic_model = BERTopic.load(model_path, embedding_model=_resolve_hf_model(DEFAULT_MODEL))
     except Exception as e:
         print(f"Aviso: No se pudo cargar el modelo de tópicos ({e}). Se indexará sin tópicos.")
         topic_model = None

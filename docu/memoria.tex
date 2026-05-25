@@ -178,8 +178,6 @@ En CulinaryRAG, se utiliza \textbf{decodificación restringida} a nivel de token
 Cuando el recomendador recupera recetas populares con decenas de reseñas extensas, inyectar el texto completo en el contexto del LLM saturaría los tokens de entrada y provocaría el fenómeno del olvido o alucinaciones. 
 El módulo `summarizer.py` implementa el algoritmo **TextRank**. Este enfoque modela las oraciones como nodos en un grafo, donde los arcos representan la similitud léxica o de solapamiento de palabras (normalizada por longitud). Tras aplicar el algoritmo de centralidad (PageRank), se extraen únicamente las $N$ oraciones más centrales, logrando un resumen denso que conserva el consenso general de la comunidad sobre la receta.
 
----
-
 \section{Discusión, Validación y Resultados}
 
 Esta sección describe las pruebas analíticas e investigaciones empíricas diseñadas para validar las decisiones de arquitectura de CulinaryRAG frente a aproximaciones baseline.

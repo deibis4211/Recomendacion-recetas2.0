@@ -1,4 +1,3 @@
-import os
 import pandas as pd
 import chromadb
 from rank_bm25 import BM25Okapi
@@ -9,20 +8,45 @@ import re
 import numpy as np
 import pickle
 import os
+from pathlib import Path
 
 # Configuración idéntica a la Práctica 4
 RRF_K = 60
 DEFAULT_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
+DEFAULT_RERANKER = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 DB_PATH = "data/chroma_db"
+
+LOCAL_MODEL_CACHE = {
+    DEFAULT_MODEL: "models--sentence-transformers--paraphrase-multilingual-MiniLM-L12-v2",
+    DEFAULT_RERANKER: "models--cross-encoder--ms-marco-MiniLM-L-6-v2",
+}
+
+
+def _resolve_hf_model(model_name: str) -> str:
+    cache_name = LOCAL_MODEL_CACHE.get(model_name)
+    if cache_name is None:
+        return model_name
+
+    snapshots_dir = Path.home() / ".cache" / "huggingface" / "hub" / cache_name / "snapshots"
+    if not snapshots_dir.exists():
+        return model_name
+
+    snapshots = sorted(
+        [path for path in snapshots_dir.iterdir() if path.is_dir()],
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    return str(snapshots[0]) if snapshots else model_name
 
 class RecipeRetriever:
     def __init__(self, model_name: str = DEFAULT_MODEL):
-        print(f"Cargando modelo de embeddings: {model_name}...")
-        self.model = SentenceTransformer(model_name)
+        embedding_model_path = _resolve_hf_model(model_name)
+        print(f"Cargando modelo de embeddings: {embedding_model_path}...")
+        self.model = SentenceTransformer(embedding_model_path)
         
         # Re-Ranker: El "juez" que decide el orden final (Opción B)
         print("Cargando Re-Ranker (Cross-Encoder)...")
-        self.reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+        self.reranker = CrossEncoder(_resolve_hf_model(DEFAULT_RERANKER))
         
         # Cliente persistente para no re-indexar 184k recetas cada vez
         self.chroma_client = chromadb.PersistentClient(path=DB_PATH)
@@ -41,6 +65,54 @@ class RecipeRetriever:
         text = str(text).lower()
         text = re.sub(r"[^a-z0-9áéíóúñü\s]", " ", text)
         return [t for t in text.split() if t]
+
+    def _expand_query(self, query: str) -> str:
+        """Añade equivalencias culinarias ES/EN para mejorar búsqueda en corpus inglés."""
+        normalized = str(query).lower()
+        expansions = []
+
+        phrase_map = {
+            "sin horno": "no bake no oven without oven",
+            "sin gluten": "gluten free without gluten",
+            "sin lactosa": "lactose free dairy free",
+            "sin leche": "dairy free without milk",
+            "sin huevo": "egg free without eggs",
+            "vegetariana": "vegetarian",
+            "vegetariano": "vegetarian",
+            "vegana": "vegan",
+            "vegano": "vegan",
+            "rápida": "quick easy fast",
+            "rapida": "quick easy fast",
+            "rápido": "quick easy fast",
+            "rapido": "quick easy fast",
+            "postre": "dessert sweet",
+            "chocolate": "chocolate cocoa",
+        }
+        for phrase, expansion in phrase_map.items():
+            if phrase in normalized:
+                expansions.append(expansion)
+
+        if not expansions:
+            return query
+        return f"{query} {' '.join(expansions)}"
+
+    def _detect_constraints(self, query: str) -> Dict[str, bool]:
+        normalized = str(query).lower()
+        return {
+            "no_oven": any(term in normalized for term in ("sin horno", "no oven", "no bake", "without oven")),
+        }
+
+    def _constraint_adjustment(self, text: str, constraints: Dict[str, bool]) -> float:
+        if not constraints.get("no_oven"):
+            return 0.0
+
+        normalized = str(text).lower()
+        positive_markers = ("no bake", "no-bake", "no oven", "without oven", "unbaked")
+        if any(marker in normalized for marker in positive_markers):
+            return 3.0
+        if "oven" in normalized or "bake" in normalized or "baked" in normalized:
+            return -8.0
+        return -2.0
 
     def index_recipes(self, df: pd.DataFrame, topic_model=None):
         """
@@ -77,6 +149,11 @@ class RecipeRetriever:
             batch_topics = topics[i : i + batch_size]
             
             ids = batch_df['id'].astype(str).tolist()
+            embeddings = self.model.encode(
+                batch_texts,
+                convert_to_numpy=True,
+                show_progress_bar=False,
+            ).tolist()
             
             # Usamos enumerate para tener un índice (j) relativo al lote actual (0 a 4999)
             metadatas = []
@@ -89,6 +166,7 @@ class RecipeRetriever:
             
             self.collection.add(
                 documents=batch_texts,
+                embeddings=embeddings,
                 ids=ids,
                 metadatas=metadatas
             )
@@ -134,17 +212,25 @@ class RecipeRetriever:
         if self.bm25 is None:
             raise ValueError("El buscador no ha sido indexado. Llama a index_recipes() o load_bm25().")
 
+        expanded_query = self._expand_query(query)
+        constraints = self._detect_constraints(query)
+
         # 0. Identificar el tópico de la consulta (Topic-Aware)
         query_topic = -1
         if self.topic_model:
             # Predecimos el tópico de la pregunta del usuario
-            topics, _ = self.topic_model.transform([query])
+            topics, _ = self.topic_model.transform([expanded_query])
             query_topic = int(topics[0])
             print(f"[IA] Tópico detectado en consulta: {query_topic}")
 
         # 1. Ranking Semántico (ChromaDB)
+        query_embedding = self.model.encode(
+            [expanded_query],
+            convert_to_numpy=True,
+            show_progress_bar=False,
+        ).tolist()
         results_sem = self.collection.query(
-            query_texts=[query],
+            query_embeddings=query_embedding,
             n_results=top_k * 2 # Pedimos más para la fusión
         )
         
@@ -152,7 +238,7 @@ class RecipeRetriever:
         rank_sem = {id_: idx for idx, id_ in enumerate(results_sem['ids'][0], start=1)}
 
         # 2. Ranking Léxico (BM25)
-        tokenized_query = self._normalize(query)
+        tokenized_query = self._normalize(expanded_query)
         bm25_scores = self.bm25.get_scores(tokenized_query)
         
         # Ordenamos los IDs por score de BM25
@@ -181,6 +267,7 @@ class RecipeRetriever:
                 score *= 1.5 # Bonus del 50%
                 
             rrf_scores.append((doc_id, score))
+        rrf_scores.sort(key=lambda item: item[1], reverse=True)
         
         # 4. Recuperar datos para el Re-ranking
         final_top_ids = [doc[0] for doc in rrf_scores[:top_k * 3]] # Cogemos el top 15 para re-rankear
@@ -188,17 +275,21 @@ class RecipeRetriever:
         
         # 5. RE-RANKING (Cross-Encoder)
         # El Cross-Encoder compara la query con cada documento y da una puntuación real
-        pairs = [[query, doc] for doc in candidate_results['documents']]
+        pairs = [[expanded_query, doc] for doc in candidate_results['documents']]
         cross_scores = self.reranker.predict(pairs)
         
         # Unimos IDs con sus nuevas puntuaciones
         scored_results = []
         for i in range(len(candidate_results['ids'])):
+            score = float(cross_scores[i]) + self._constraint_adjustment(
+                candidate_results['documents'][i],
+                constraints,
+            )
             scored_results.append({
                 "id": candidate_results['ids'][i],
                 "text": candidate_results['documents'][i],
                 "metadata": candidate_results['metadatas'][i],
-                "score": cross_scores[i]
+                "score": score
             })
         
         # Ordenamos por la puntuación del Re-Ranker
