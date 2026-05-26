@@ -23,8 +23,9 @@ def _default_llm_model():
     gemma_cache = os.path.expanduser(
         "~/.cache/huggingface/hub/models--google--gemma-3-1b-it/snapshots"
     )
+    # Si no tiene el modelo Gemma ya descargado (requiere token), usamos Qwen que es abierto y muy bueno en español
     if not os.path.isdir(gemma_cache):
-        return ""
+        return "Qwen/Qwen2.5-1.5B-Instruct"
 
     snapshots = [
         os.path.join(gemma_cache, name)
@@ -32,7 +33,7 @@ def _default_llm_model():
         if os.path.isdir(os.path.join(gemma_cache, name))
     ]
     if not snapshots:
-        return ""
+        return "Qwen/Qwen2.5-1.5B-Instruct"
     return max(snapshots, key=os.path.getmtime)
 
 

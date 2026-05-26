@@ -121,12 +121,12 @@ Este bloque se ejecuta de forma asíncrona antes de la interacción con el usuar
 \end{enumerate}
 
 \subsection{Pipeline Online (Bucle en Tiempo Real)}
-Cuando el usuario introduce una consulta, el sistema la procesa instantáneamente a través de un flujo estructurado:
+Cuando el usuario introduce una consulta, el sistema la procesa instantáneamente a través de un flujo estructurado operado por varios scripts interconectados:
 \begin{enumerate}
     \item \textbf{Agente Orquestador DAG (`agent.py`):} El LLM actúa como router inteligente. Analiza la consulta y decide cuál es la mejor ruta mediante \textbf{decodificación restringida}. Esto obliga al LLM a emitir exactamente una de las acciones válidas: `recomendador` (búsqueda de recetas local), `resumidor` (síntesis de reseñas) o `web` (búsqueda externa).
-    \item \textbf{Buscador Híbrido Avanzado (`retriever.py`):} Si se activa el recomendador, se realiza una búsqueda paralela semántica (en ChromaDB) y léxica (con BM25). Las puntuaciones se unifican mediante la fórmula RRF.
-    \item \textbf{Re-ranking y Topic Boost:} Se clasifica el tópico de la consulta del usuario mediante BERTopic. Si una receta del ranking coincide con el tópico de la pregunta, recibe un \textbf{Topic Boost del 50\%}. Finalmente, los mejores candidatos se evalúan mediante un modelo \textbf{Cross-Encoder (ms-marco)} para calcular la relevancia contextual exacta.
-    \item \textbf{Generación y TextRank (`summarizer.py` / `llm.py`):} Si las recetas elegidas tienen exceso de reseñas, se aplica el algoritmo extractivo \textbf{TextRank} para inyectar solo las 3 frases más relevantes en el contexto del LLM. El modelo de lenguaje local sintetiza la respuesta y la presenta al usuario de forma natural.
+    \item \textbf{Buscador Híbrido Avanzado (`retriever.py`):} Si se activa el recomendador, se realiza primero una fase de "Query Expansion" para enriquecer semánticamente la búsqueda. Tras esto, ejecuta la búsqueda paralela semántica (en ChromaDB) y léxica (con BM25). Las puntuaciones se unifican mediante la fórmula RRF.
+    \item \textbf{Re-ranking con Restricciones Lógicas (`retriever.py`):} Se clasifica el tópico de la consulta del usuario mediante BERTopic. Si una receta coincide con el tópico de la pregunta, recibe un \textbf{Topic Boost del 50\%}. Posteriormente, se aplican ajustes dinámicos de puntuación detectando restricciones (ej. intolerancias) de la petición del usuario. Finalmente, los candidatos superan un modelo \textbf{Cross-Encoder} para evaluar la relevancia contextual exacta.
+    \item \textbf{Generación y TextRank (`summarizer.py` / `llm.py`):} Si las recetas elegidas tienen exceso de reseñas, se aplica el algoritmo extractivo \textbf{TextRank} implementado de forma vectorial (similitud de coseno y PageRank) para inyectar solo las oraciones más relevantes en el contexto del LLM. Por último, `llm.py` gestiona la llamada al modelo para sintetizar la respuesta y presentarla de forma natural.
 \end{enumerate}
 
 ---
@@ -168,7 +168,10 @@ for doc_id in all_ids:
         
     rrf_scores.append((doc_id, score))
 \end{lstlisting}
-Esta fusión de rankings se complementa con un reordenamiento final mediante el Cross-Encoder `cross-encoder/ms-marco-MiniLM-L-6-v2`. A diferencia de los Bi-Encoders que comparan vectores precalculados de forma aislada, el Cross-Encoder realiza un procesamiento conjunto de la consulta y el documento a través de mecanismos de atención completa, capturando relaciones de negación lógica y cuantificadores esenciales (por ejemplo, distinguiendo perfectamente entre "chocolate con leche" y "chocolate sin leche").
+Esta fusión de rankings se complementa con dos técnicas avanzadas. En primer lugar, la detección de restricciones (`_detect_constraints` en `retriever.py`) altera artificialmente la puntuación dependiendo del grado en el que la receta respete las intolerancias o negaciones lógicas del usuario. 
+Por último, se aplica un reordenamiento final mediante el Cross-Encoder `cross-encoder/ms-marco-MiniLM-L-6-v2`. A diferencia de los Bi-Encoders que comparan vectores precalculados de forma aislada, el Cross-Encoder realiza un procesamiento conjunto de la consulta expandida y el documento a través de mecanismos de atención completa, capturando relaciones lógicas que el índice semántico inicial podría pasar por alto.
+
+Adicionalmente, se construyó el script `test_search.py` como un banco de pruebas unitario para permitir una validación en profundidad de este sistema de recuperación aislado (sin tener que iterar todo el modelo LLM online), asegurando la calidad del ranking bajo condiciones complejas.
 
 \subsection{Agente Router y Decodificación Restringida}
 Para la orquestación, implementamos un router DAG basado en el LLM. Los frameworks tradicionales usan prompts de sistema con la esperanza de que el LLM devuelva un JSON o un comando estructurado, lo cual es propenso a fallos en modelos locales pequeños (1B a 3B). 

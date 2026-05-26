@@ -49,13 +49,40 @@ def _llm_route(query: str, llm_model, tokenizer) -> Optional[str]:
             return action
     return None
 
+def _rewrite_query(query: str, llm_model, tokenizer) -> str:
+    if llm_model is None or tokenizer is None:
+        return query
+
+    from modules.llm import generate_response
+
+    prompt = (
+        "Extrae los ingredientes y restricciones de esta consulta y tradúcelos al INGLÉS como palabras clave.\n"
+        "Devuelve SOLO las palabras clave en inglés separadas por espacios. No escribas frases completas.\n"
+        "Ejemplo: 'quiero una receta rápida de pollo sin horno' -> 'chicken fast no oven'\n\n"
+        f"Consulta: {query}\n"
+        "Palabras clave (inglés):"
+    )
+    output = generate_response(prompt, llm_model, tokenizer, max_new_tokens=20).strip()
+    
+    # Limpieza por si el LLM devuelve saltos de línea o comillas
+    output = output.replace("\n", " ").replace('"', '').replace("'", "")
+    
+    print(f"[Agente] Query reescrita para RAG: '{output}'")
+    return output if output else query
+
 def route_query(query: str, llm_model=None, tokenizer=None) -> dict:
     """
     Usa decodificación restringida para forzar al LLM a elegir una herramienta válida
     ('recomendar', 'web', 'resumir') y extraer los argumentos.
     """
     action = _llm_route(query, llm_model, tokenizer) or _heuristic_route(query)
-    return {"action": action, "arguments": query}
+    
+    # Si vamos a buscar recetas, traducimos la frase a palabras clave
+    arguments = query
+    if action == "recomendar":
+        arguments = _rewrite_query(query, llm_model, tokenizer)
+        
+    return {"action": action, "arguments": arguments}
 
 def execute_tool(
     action: str,

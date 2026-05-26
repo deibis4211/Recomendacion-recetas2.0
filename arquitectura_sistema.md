@@ -26,7 +26,7 @@ Este bloque (`offline_pipeline.py`) se encarga de ingerir y preparar los datos d
     *   *Visualización e Interpretabilidad*: El sistema genera mapas interactivos de distancia inter-tópico y gráficos de barras de palabras clave (vía Plotly) para permitir la validación humana de los clústeres descubiertos.
 2.  **Indexing**: Generación de embeddings de la combinación `name + description + ingredients` y almacenamiento en base de datos vectorial (ChromaDB) junto con un índice léxico (BM25).
 3.  **Topic-Aware Reranking**: Integración del modelo BERTopic en el proceso de recuperación. El sistema identifica el tópico de la consulta del usuario en tiempo real y aplica un bonus de relevancia (vía Fusión RRF) a los documentos que comparten el mismo tópico, filtrando eficazmente resultados ruidosos.
-4.  **Pre-resumen**: Aplicación de **TextRank** a las recetas con exceso de reseñas para generar un "consenso" inicial.
+4.  **Pre-resumen (`summarizer.py`)**: Uso de **TextRank** a las reseñas históricas para precomputar o extraer consensos iniciales.
 
 ## 3. Arquitectura del Sistema Online
 
@@ -38,14 +38,18 @@ Utiliza un modelo local con **decodificación restringida** para actuar como rou
     *   `calculadora`: Filtrado por metadatos (`minutes`, `calories`).
 
 ### 3.2. Recuperación Híbrida (`retriever.py`)
-Combina dos rankings y una etapa de validación profunda:
-1.  **Recuperación Híbrida (RRF)**: Fusión de búsqueda semántica (Vectores) y léxica (BM25).
-2.  **Topic-Aware Boost**: Bonus de relevancia si el documento coincide con el tópico de la consulta detectado por BERTopic.
-3.  **Re-Ranking (Cross-Encoder)**: Uso de un modelo `ms-marco-MiniLM-L-6-v2` para re-ordenar los mejores candidatos basándose en la relación semántica exacta entre pregunta y documento, resolviendo problemas de negación (ej: "no oven").
+Combina múltiples estrategias y validaciones profundas para extraer las recetas más idóneas:
+1.  **Query Expansion y Detección de Restricciones**: La consulta original del usuario se expande para mejorar la cobertura, y se analizan explícitamente restricciones lógicas (ej: intolerancias o negaciones).
+2.  **Recuperación Híbrida (RRF)**: Fusión de búsqueda semántica (Vectores) y léxica (BM25) usando la consulta expandida.
+3.  **Topic-Aware Boost**: Bonus de relevancia si el documento coincide con el tópico de la consulta.
+4.  **Re-Ranking (Cross-Encoder)**: Uso de un modelo `ms-marco-MiniLM-L-6-v2` para re-ordenar los candidatos. Además, la puntuación se ajusta matemáticamente (`constraint_adjustment`) penalizando o premiando según el cumplimiento estricto de las restricciones detectadas.
 
-### 3.3. Generación (LLM)
-*   **Contexto**: Se inyectan los `steps` de la receta y el resumen de las `reviews`.
-*   **Prompting**: Diseño de sistema para que el modelo no solo dé la receta, sino que justifique por qué encaja con los gustos del usuario.
+### 3.3. Generación (`llm.py`)
+*   **Gestión del LLM Local**: Carga y prepara el modelo (ej. Gemma) asegurando la inferencia en GPU.
+*   **Prompting y Contexto**: Inyecta los `steps` de la receta recuperada y el resumen de reseñas al sistema de prompts para generar una respuesta que recomiende y justifique por qué encaja con los gustos del usuario.
+
+### 3.4. Resumen Extractivo (`summarizer.py`)
+*   Implementación pura del algoritmo de grafos **TextRank** usando similitud del coseno y PageRank. Extrae de forma dinámica las oraciones (consenso general) más representativas de todas las reviews, condensando la información y evitando sobrecargar el contexto del modelo de lenguaje.
 
 ---
 
@@ -58,16 +62,21 @@ La arquitectura cubre holgadamente todos los requerimientos estipulados:
 | **Embeddings** | Generados con `SentenceTransformers` en el módulo *Retriever*. |
 | **Topic Modeling** | Implementado con `BERTopic` para categorización automática y filtrado semántico (*Topic-Aware Reranking*). |
 | **Búsqueda Híbrida** | Fusión RRF de rankings semánticos y léxicos (BM25) para máxima precisión. |
-| **Precisión Semántica** | Uso de **Cross-Encoder** para re-ranking, eliminando falsos positivos y manejando negaciones. |
+| **Precisión Semántica** | Expansión de consultas y uso de **Cross-Encoder** para re-ranking con ajuste por restricciones. |
 | **Modelado de Tópicos** | Módulo offline *Topics* usando `BERTopic` para agrupar ítems/reseñas. |
-| **Resumen Extractivo** | Módulo *Summarizer* aplicando algoritmo `TextRank` (grafos). |
-| **LLM** | Corazón del sistema (*Router* y *Sintetizador*). Modelo local (ej. Gemma). |
-| **RAG** | Módulo *Retriever* integrando búsqueda híbrida y RRF para inyección de contexto. |
-| **Agentes** | Enrutador con decodificación restringida que decide qué módulo llamar (RAG, Web, Summarizer). |
-| **Arquitectura** | Clara división lógica entre `offline_pipeline.py` y `main.py`. |
+| **Resumen Extractivo** | Módulo `summarizer.py` aplicando algoritmo matemático `TextRank` (grafos y PageRank). |
+| **LLM** | Corazón del sistema (`llm.py` y `agent.py`). Modelo local. |
+| **RAG** | Módulo `retriever.py` integrando búsqueda híbrida y RRF para inyección de contexto. |
+| **Agentes** | Enrutador (`agent.py`) con decodificación restringida que decide qué módulo llamar. |
+| **Arquitectura** | Clara división lógica entre `offline_pipeline.py` y el agente online. |
 
 ---
 
-## 3. Consideraciones de Diseño
+## 5. Pruebas y Validación (`test_search.py`)
+Para garantizar la calidad de la recuperación (RAG) sin tener que iniciar todo el agente de lenguaje natural, el sistema incorpora el script `test_search.py`. Este módulo de pruebas aísla el comportamiento del `retriever.py` y lanza consultas complejas contra el índice local para verificar de primera mano cómo actúan la fusión RRF, el Topic-Aware Reranking y la penalización por restricciones lógicas.
+
+---
+
+## 6. Consideraciones de Diseño
 - **No se usan frameworks cerrados**: Toda la lógica de enrutamiento (como el Router DAG) y el pipeline de RAG (RRF) se implementa directamente en código Python (evitando LangChain o LlamaIndex), evidenciando el dominio técnico profundo requerido por la rúbrica de evaluación.
 - **Eficiencia de Contexto**: El uso combinado de *Resumen Extractivo* previo a la inyección y de *RRF* garantiza que el LLM solo reciba los datos de máxima calidad, evitando alucinaciones y desbordamiento de tokens de contexto.

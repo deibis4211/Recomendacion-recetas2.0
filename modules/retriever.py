@@ -61,18 +61,27 @@ class RecipeRetriever:
         self.topic_model = None # Modelo BERTopic opcional para re-ranking
 
     def _normalize(self, text: str) -> List[str]:
-        """Normalización léxica (igual que en la Práctica 4)"""
+        """Normalización léxica y eliminación de stop words básicas (ES/EN) para BM25"""
         text = str(text).lower()
         text = re.sub(r"[^a-z0-9áéíóúñü\s]", " ", text)
-        return [t for t in text.split() if t]
+        tokens = [t for t in text.split() if t]
+        stop_words = {
+            "el", "la", "los", "las", "un", "una", "unos", "unas",
+            "y", "o", "pero", "si", "por", "para", "con", "de", "del",
+            "a", "al", "en", "que", "es", "su", "sus", "te", "se", "lo", "mi", "tu",
+            "yo", "me", "buenas", "buscaba", "quiero", "tengo", "casa",
+            "the", "and", "or", "to", "in", "with", "of", "for", "a", "an"
+        }
+        return [t for t in tokens if t not in stop_words]
 
-    def _expand_query(self, query: str) -> str:
-        """Añade equivalencias culinarias ES/EN para mejorar búsqueda en corpus inglés."""
+    def _expand_query(self, query: str) -> Tuple[str, str]:
+        """Devuelve (expanded_query_mixta, english_keywords_only)"""
         normalized = str(query).lower()
-        expansions = []
+        english_terms = []
 
         phrase_map = {
             "sin horno": "no bake no oven without oven",
+            "sin uso de horno": "no bake no oven without oven",
             "sin gluten": "gluten free without gluten",
             "sin lactosa": "lactose free dairy free",
             "sin leche": "dairy free without milk",
@@ -87,19 +96,33 @@ class RecipeRetriever:
             "rapido": "quick easy fast",
             "postre": "dessert sweet",
             "chocolate": "chocolate cocoa",
+            "pollo": "chicken",
+            "huevo": "egg",
+            "huevos": "eggs",
+            "carne": "meat beef",
+            "cerdo": "pork",
+            "arroz": "rice",
+            "queso": "cheese",
+            "patata": "potato",
+            "patatas": "potatoes",
+            "ajo": "garlic",
+            "cebolla": "onion",
         }
         for phrase, expansion in phrase_map.items():
             if phrase in normalized:
-                expansions.append(expansion)
+                english_terms.append(expansion)
 
-        if not expansions:
-            return query
-        return f"{query} {' '.join(expansions)}"
+        english_query = " ".join(english_terms)
+        if not english_query:
+            return query, query
+            
+        return f"{query} {english_query}", english_query
 
     def _detect_constraints(self, query: str) -> Dict[str, bool]:
         normalized = str(query).lower()
+        no_oven = bool(re.search(r"sin\s+(uso\s+de\s+)?horno|no\s+horno|no\s+oven|no\s+bake|without\s+oven", normalized))
         return {
-            "no_oven": any(term in normalized for term in ("sin horno", "no oven", "no bake", "without oven")),
+            "no_oven": no_oven,
         }
 
     def _constraint_adjustment(self, text: str, constraints: Dict[str, bool]) -> float:
@@ -212,7 +235,7 @@ class RecipeRetriever:
         if self.bm25 is None:
             raise ValueError("El buscador no ha sido indexado. Llama a index_recipes() o load_bm25().")
 
-        expanded_query = self._expand_query(query)
+        expanded_query, english_query = self._expand_query(query)
         constraints = self._detect_constraints(query)
 
         # 0. Identificar el tópico de la consulta (Topic-Aware)
@@ -238,7 +261,7 @@ class RecipeRetriever:
         rank_sem = {id_: idx for idx, id_ in enumerate(results_sem['ids'][0], start=1)}
 
         # 2. Ranking Léxico (BM25)
-        tokenized_query = self._normalize(expanded_query)
+        tokenized_query = self._normalize(english_query)
         bm25_scores = self.bm25.get_scores(tokenized_query)
         
         # Ordenamos los IDs por score de BM25
@@ -249,7 +272,6 @@ class RecipeRetriever:
         all_ids = set(rank_sem.keys()) | set(rank_lex.keys())
         
         # Recuperamos metadatos de los candidatos para saber sus tópicos
-        # Pedimos los metadatos de todos los candidatos detectados
         candidate_data = self.collection.get(ids=list(all_ids))
         id_to_topic = {id_: meta['topic'] for id_, meta in zip(candidate_data['ids'], candidate_data['metadatas'])}
 
@@ -261,8 +283,7 @@ class RecipeRetriever:
             if doc_id in rank_lex:
                 score += 1.0 / (RRF_K + rank_lex[doc_id])
             
-            # BONUS DE TÓPICO: Si el tópico coincide con la consulta, damos un empujón
-            # Esto evita que salgan recetas de bacon (Tópico X) en búsquedas de chocolate (Tópico Y)
+            # BONUS DE TÓPICO
             if query_topic != -1 and id_to_topic.get(doc_id) == query_topic:
                 score *= 1.5 # Bonus del 50%
                 
@@ -270,12 +291,12 @@ class RecipeRetriever:
         rrf_scores.sort(key=lambda item: item[1], reverse=True)
         
         # 4. Recuperar datos para el Re-ranking
-        final_top_ids = [doc[0] for doc in rrf_scores[:top_k * 3]] # Cogemos el top 15 para re-rankear
+        final_top_ids = [doc[0] for doc in rrf_scores[:top_k * 4]] # Cogemos más candidatos (20) para mayor precisión
         candidate_results = self.collection.get(ids=final_top_ids)
         
         # 5. RE-RANKING (Cross-Encoder)
-        # El Cross-Encoder compara la query con cada documento y da una puntuación real
-        pairs = [[expanded_query, doc] for doc in candidate_results['documents']]
+        # Usamos SÓLO el english_query para el Cross-Encoder, ya que ms-marco no entiende español y da puntuaciones aleatorias
+        pairs = [[english_query, doc] for doc in candidate_results['documents']]
         cross_scores = self.reranker.predict(pairs)
         
         # Unimos IDs con sus nuevas puntuaciones
