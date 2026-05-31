@@ -12,7 +12,7 @@ def probar_busqueda():
         print("ERROR: No se encontró el índice BM25.")
         return
 
-    # 3. Cargar el modelo de tópicos para el Re-ranking (Topic-Aware)
+    # 3. Cargar el modelo de tópicos para el Re-ranking 
     from bertopic import BERTopic
     model_path = "models/bertopic_recipes"
     if os.path.exists(model_path):
@@ -20,7 +20,6 @@ def probar_busqueda():
         topic_model = BERTopic.load(model_path, embedding_model=_resolve_hf_model(DEFAULT_MODEL))
         retriever.set_topic_model(topic_model)
 
-    # 3. Lista de consultas para probar la potencia del sistema
     consultas = [
         "kebab",
         "korean",
@@ -35,7 +34,6 @@ def probar_busqueda():
         # Hacemos la búsqueda híbrida (RRF)
         resultados = retriever.hybrid_search(query, top_k=3)
 
-        # Mostrar resultados
         for i, res in enumerate(resultados, 1):
             m = res['metadata']
             print(f"   {i}. {m['name']} (Tópico: {m['topic']})")

@@ -2,14 +2,13 @@ import os
 import pandas as pd
 from topics import train_topic_model, visualize_model, calculate_coherence_score
 
-# Configuramos nuevas rutas para el experimento
 MODEL_DIR_NO_SEEDS = "models/bertopic_no_seeds"
 VIS_DIR_NO_SEEDS = "visualizations_no_seeds"
 
 if __name__ == "__main__":
     print("Iniciando experimento SIN SEMILLAS...")
     
-    # 1. Cargamos y preparamos los mismos datos (estratificados)
+    # 1. Cargamos y preparamos los mismos datos 
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     PATH_RECIPES = os.path.join(base_dir, "datasets", "Processed_recipes.csv")
     df_recipes = pd.read_csv(PATH_RECIPES)
@@ -19,12 +18,11 @@ if __name__ == "__main__":
     
     corpus = (df_sample['name'].fillna('') + " " + df_sample['tags'].fillna('')).tolist()
 
-    # 2. ENTRENAMOS SIN SEMILLAS (seed_topics=None)
-    # Pasamos una ruta de guardado distinta
+    # 2. ENTRENAMOS SIN SEMILLAS 
     print(f"Entrenando modelo puramente no supervisado...")
     modelo_puro = train_topic_model(corpus, seed_topics=None)
     
-    # 3. Guardamos en la nueva ruta (usando safetensors para guardar como carpeta)
+    # 3. Guardamos en la nueva ruta 
     os.makedirs(MODEL_DIR_NO_SEEDS, exist_ok=True)
     modelo_puro.save(MODEL_DIR_NO_SEEDS, serialization="safetensors")
     

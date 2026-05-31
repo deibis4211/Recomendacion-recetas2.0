@@ -160,34 +160,27 @@ def calculate_coherence_score(topic_model, corpus: list) -> float:
 
 
 if __name__ == "__main__":
-    # SCRIPT DE PRUEBA / ENTRENAMIENTO OFFLINE
+
     print("Cargando dataset...")
-    # Usamos una ruta absoluta relativa a este script
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     df_path = os.path.join(base_dir, 'datasets', 'Processed_recipes.csv')
     df_recipes = pd.read_csv(df_path)
     
-    # ---------------------------------------------------------
-    # MUESTREO ESTRATIFICADO: Garantizar representatividad
-    # ---------------------------------------------------------
     # Dividimos las recetas en 4 grupos (cuartiles) según lo que tardan en cocinarse
-    # Así nos aseguramos de tener recetas rápidas, normales y lentas en la misma proporción que el dataset original
     df_recipes['time_category'] = pd.qcut(df_recipes['minutes'], q=4, labels=['muy_rapida', 'rapida', 'media', 'lenta'], duplicates='drop')
     
-    # Extraemos la muestra manteniendo la proporción exacta de cada grupo
+    # Extraemos la muestra 
     sample_size = 10000
     df_sample = df_recipes.groupby('time_category', group_keys=False).apply(
         lambda x: x.sample(int(len(x) / len(df_recipes) * sample_size), random_state=42)
     ).copy()
     
     print(f"Muestra estratificada generada: {len(df_sample)} recetas.")
-    # ---------------------------------------------------------
     
-    # Creamos el corpus juntando el nombre y las etiquetas
+    # Creamos el corpus 
     df_sample['text_for_topic'] = df_sample['name'].fillna('') + " " + df_sample['tags'].fillna('')
     corpus_entrenamiento = df_sample['text_for_topic'].tolist()
     
-    # Definimos unas "semillas" para guiar al modelo
     semillas = [
         ["vegan", "vegetarian", "plant-based"],
         ["dessert", "cake", "sweet", "chocolate"],
@@ -195,17 +188,15 @@ if __name__ == "__main__":
         ["quick", "easy", "fast", "15-minutes"]
     ]
     
-    # Entrenamos
     modelo = train_topic_model(corpus_entrenamiento, seed_topics=semillas)
     
     # Generamos el mapa interactivo
     visualize_model(modelo)
     
-    # Calcular la coherencia de tópicos (C_v)
+    # Calcular la coherencia de tópicos
     coherence_score = calculate_coherence_score(modelo, corpus_entrenamiento)
     print(f"\nCoherencia de tópicos calculada: {coherence_score:.4f}")
     
-    # Mostramos los tópicos generados en consola
     print("\nResumen de tópicos descubiertos:")
     print(modelo.get_topic_info().head(10))
 

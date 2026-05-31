@@ -146,7 +146,6 @@ class RecipeRetriever:
         print(f"Preparando indexación de {len(df)} recetas...")
         
         # 1. Preparar textos para embeddings (Nombre + Descripción + Ingredientes)
-        # Usamos una combinación rica para que el RAG sea preciso
         texts_to_embed = (
             df['name'].fillna('') + " " + 
             df['description'].fillna('') + " " + 
@@ -157,14 +156,11 @@ class RecipeRetriever:
         topics = [-1] * len(df)
         if topic_model:
             print("Calculando tópicos para las recetas...")
-            # Aquí usamos el modelo ya entrenado para predecir el tópico de cada receta
             topics, _ = topic_model.transform(texts_to_embed)
 
-        # 3. Indexar en ChromaDB (Semántico)
-        # Nota: En producción con 184k, esto se haría por batches.
-        print("Generando embeddings e indexando en ChromaDB (esto puede tardar)...")
+        # 3. Indexar en ChromaDB
+        print("Generando embeddings e indexando en ChromaDB...")
         
-        # Para evitar colapsar la RAM, indexamos en bloques de 5000
         batch_size = 5000
         for i in range(0, len(df), batch_size):
             batch_df = df.iloc[i : i + batch_size]
@@ -178,7 +174,6 @@ class RecipeRetriever:
                 show_progress_bar=False,
             ).tolist()
             
-            # Usamos enumerate para tener un índice (j) relativo al lote actual (0 a 4999)
             metadatas = []
             for j, (idx, row) in enumerate(batch_df.iterrows()):
                 metadatas.append({
@@ -195,13 +190,12 @@ class RecipeRetriever:
             )
             print(f"Indexados {i + len(batch_df)} / {len(df)} recetas...")
 
-        # 4. Preparar BM25 (Léxico)
+        # 4. Preparar BM25
         print("Preparando índice léxico BM25...")
         tokenized_corpus = [self._normalize(t) for t in texts_to_embed]
         self.bm25 = BM25Okapi(tokenized_corpus)
         self.recipe_ids = df['id'].astype(str).tolist()
         
-        # Guardar BM25 para no tener que re-tokenizar 184k textos
         self.save_bm25()
         print("¡Indexación completada!")
 
@@ -238,10 +232,10 @@ class RecipeRetriever:
         expanded_query, english_query = self._expand_query(query)
         constraints = self._detect_constraints(query)
 
-        # 0. Identificar el tópico de la consulta (Topic-Aware)
+        # 0. Identificar el tópico de la consulta 
         query_topic = -1
         if self.topic_model:
-            # Predecimos el tópico de la pregunta del usuario
+            
             topics, _ = self.topic_model.transform([expanded_query])
             query_topic = int(topics[0])
             print(f"[IA] Tópico detectado en consulta: {query_topic}")
@@ -254,10 +248,10 @@ class RecipeRetriever:
         ).tolist()
         results_sem = self.collection.query(
             query_embeddings=query_embedding,
-            n_results=top_k * 2 # Pedimos más para la fusión
+            n_results=top_k * 2
         )
         
-        # Mapeamos IDs a su posición en el ranking (1-based)
+        # Mapeamos IDs a su posición en el ranking
         rank_sem = {id_: idx for idx, id_ in enumerate(results_sem['ids'][0], start=1)}
 
         # 2. Ranking Léxico (BM25)
@@ -271,7 +265,7 @@ class RecipeRetriever:
         # 3. Fusión RRF con Bonus por Tópico
         all_ids = set(rank_sem.keys()) | set(rank_lex.keys())
         
-        # Recuperamos metadatos de los candidatos para saber sus tópicos
+        # Recuperamos metadatos de los candidatos
         candidate_data = self.collection.get(ids=list(all_ids))
         id_to_topic = {id_: meta['topic'] for id_, meta in zip(candidate_data['ids'], candidate_data['metadatas'])}
 
@@ -283,7 +277,6 @@ class RecipeRetriever:
             if doc_id in rank_lex:
                 score += 1.0 / (RRF_K + rank_lex[doc_id])
             
-            # BONUS DE TÓPICO
             if query_topic != -1 and id_to_topic.get(doc_id) == query_topic:
                 score *= 1.5 # Bonus del 50%
                 
@@ -291,11 +284,10 @@ class RecipeRetriever:
         rrf_scores.sort(key=lambda item: item[1], reverse=True)
         
         # 4. Recuperar datos para el Re-ranking
-        final_top_ids = [doc[0] for doc in rrf_scores[:top_k * 4]] # Cogemos más candidatos (20) para mayor precisión
+        final_top_ids = [doc[0] for doc in rrf_scores[:top_k * 4]] 
         candidate_results = self.collection.get(ids=final_top_ids)
         
-        # 5. RE-RANKING (Cross-Encoder)
-        # Usamos SÓLO el english_query para el Cross-Encoder, ya que ms-marco no entiende español y da puntuaciones aleatorias
+        # 5. RE-RANKING
         pairs = [[english_query, doc] for doc in candidate_results['documents']]
         cross_scores = self.reranker.predict(pairs)
         
@@ -319,7 +311,6 @@ class RecipeRetriever:
         return scored_results[:top_k]
 
 if __name__ == "__main__":
-    # Script de prueba rápido
-    print("Probando inicialización del Retriever...")
+ç    print("Probando inicialización del Retriever...")
     retriever = RecipeRetriever()
     print("Retriever listo.")

@@ -16,7 +16,6 @@ def run_offline_pipeline():
     df = pd.read_csv(path_recipes)
     
     # 2. Cargar modelo de tópicos
-    # Usamos la ruta donde guardamos el modelo el otro día
     model_path = "bertopic_recipes" 
     if not os.path.exists(model_path):
         model_path = "models/bertopic_recipes"

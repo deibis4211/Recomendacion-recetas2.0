@@ -23,7 +23,7 @@ def _default_llm_model():
     gemma_cache = os.path.expanduser(
         "~/.cache/huggingface/hub/models--google--gemma-3-1b-it/snapshots"
     )
-    # Si no tiene el modelo Gemma ya descargado (requiere token), usamos Qwen que es abierto y muy bueno en español
+    # Si no tiene el modelo Gemma ya descargado (requiere token), usamos Qwen 
     if not os.path.isdir(gemma_cache):
         return "Qwen/Qwen2.5-1.5B-Instruct"
 
@@ -77,7 +77,7 @@ if __name__ == "__main__":
     if model is None:
         print("Aviso: CULINARYRAG_MODEL no está definido; se mostrará el contexto recuperado sin síntesis LLM.")
     
-    print("¡Asistente listo! Escribe 'salir' para terminar.")
+    print("Asistente listo. Escribe 'salir' para terminar.")
     while True:
         user_input = input("\nTú: ")
         if user_input.lower() in ["salir", "exit", "quit"]:
