@@ -1,82 +1,142 @@
-# Documentación Técnica: Arquitectura del Sistema Recomendador
+# Arquitectura técnica de CulinaryRAG
 
-DATASET EN: www.kaggle.com/datasets/iamnotwhale/food-com-recsys-dataset?resource=download
+CulinaryRAG es un asistente conversacional de recetas construido para cumplir el proyecto final MITEX. La arquitectura separa el procesamiento offline del corpus y el bucle online de interacción con el usuario.
 
-Este documento describe la arquitectura técnica propuesta para el Proyecto Final MITEX. El sistema es un **asistente interactivo especializado en recomendaciones** (el dominio exacto: películas, videojuegos, libros, etc., es configurable).
+Fuente de datos: Food.com Recsys Dataset de Kaggle.
 
-## 1. Diseño Arquitectónico Global
+## 1. Vista global
 
-Para cumplir con los requisitos del proyecto (separación de módulos offline/online) y garantizar la escalabilidad y respuesta en tiempo real, la arquitectura se divide en dos grandes bloques:
+```text
+CSV Food.com
+    ↓
+datasets/preprocesado.py
+    ↓
+modules/topics.py ─────────────┐
+    ↓                           │
+offline_pipeline.py             │
+    ↓                           │
+ChromaDB + BM25 + tópicos       │
+    ↓                           │
+main.py → agent.py → retriever.py / summarizer.py / web fallback
+    ↓
+llm.py
+    ↓
+Respuesta en español
+```
 
-### A. Pipeline Offline (Pre-procesamiento)
-Este bloque (`offline_pipeline.py`) se encarga de ingerir y preparar los datos de forma asíncrona antes de que el usuario interactúe con el sistema. 
+## 2. Pipeline offline
 
-## 2. Pipeline de Datos (ETL)
+### 2.1 Preprocesado
 
-### 2.1. Ingestión y Limpieza (`ingestion.py`)
-*   **Fuentes**: `Processed_recipes.csv` y `Processed_interactions.csv`.
-*   **Campos Clave**: 
-    *   Recetas: `name`, `steps`, `description`, `ingredients`, `tags`.
-    *   Interacciones: `review`, `corrected_rating`.
-*   **Proceso**: Unión de datasets por `recipe_id` y normalización de textos (limpieza de HTML, minúsculas).
+Archivo: `datasets/preprocesado.py`
 
-### 2.2. Procesamiento Offline (`offline_pipeline.py`)
-1.  **Topic Modeling (BERTopic)**: Agrupamiento de recetas basado en `tags` e `ingredients` para identificar estilos de cocina automáticamente.
-    *   *Representatividad (Muestreo Estratificado)*: Para el entrenamiento, se extrae una muestra de 10.000 recetas estratificadas por el tiempo de cocción (`minutes` en cuartiles). Esto garantiza un 99% de nivel de confianza y asegura que todos los perfiles de cocina (desde snacks de 5 min hasta asados de 3h) estén proporcionalmente representados en el modelo.
-    *   *Visualización e Interpretabilidad*: El sistema genera mapas interactivos de distancia inter-tópico y gráficos de barras de palabras clave (vía Plotly) para permitir la validación humana de los clústeres descubiertos.
-2.  **Indexing**: Generación de embeddings de la combinación `name + description + ingredients` y almacenamiento en base de datos vectorial (ChromaDB) junto con un índice léxico (BM25).
-3.  **Topic-Aware Reranking**: Integración del modelo BERTopic en el proceso de recuperación. El sistema identifica el tópico de la consulta del usuario en tiempo real y aplica un bonus de relevancia (vía Fusión RRF) a los documentos que comparten el mismo tópico, filtrando eficazmente resultados ruidosos.
-4.  **Pre-resumen (`summarizer.py`)**: Uso de **TextRank** a las reseñas históricas para precomputar o extraer consensos iniciales.
+- Carga `Filtered_recipes.csv` y `Filtered_interactions.csv`.
+- Elimina interacciones sin reseña textual.
+- Conserva usuarios con al menos 8 reseñas.
+- Cruza interacciones con recetas existentes.
+- Exporta `Processed_recipes.csv` y `Processed_interactions.csv`.
 
-## 3. Arquitectura del Sistema Online
+### 2.2 Tópicos
 
-### 3.1. Agente Orquestador (`agent.py`)
-Utiliza un modelo local con **decodificación restringida** para actuar como router.
-*   **Herramientas disponibles**:
-    *   `recomendador`: Búsqueda híbrida (RRF) en el índice de recetas.
-    *   `resumidor`: Uso de **TextRank** en tiempo real para sintetizar reseñas de una receta específica.
-    *   `calculadora`: Filtrado por metadatos (`minutes`, `calories`).
+Archivo: `modules/topics.py`
 
-### 3.2. Recuperación Híbrida (`retriever.py`)
-Combina múltiples estrategias y validaciones profundas para extraer las recetas más idóneas:
-1.  **Query Expansion y Detección de Restricciones**: La consulta original del usuario se expande para mejorar la cobertura, y se analizan explícitamente restricciones lógicas (ej: intolerancias o negaciones).
-2.  **Recuperación Híbrida (RRF)**: Fusión de búsqueda semántica (Vectores) y léxica (BM25) usando la consulta expandida.
-3.  **Topic-Aware Boost**: Bonus de relevancia si el documento coincide con el tópico de la consulta.
-4.  **Re-Ranking (Cross-Encoder)**: Uso de un modelo `ms-marco-MiniLM-L-6-v2` para re-ordenar los candidatos. Además, la puntuación se ajusta matemáticamente (`constraint_adjustment`) penalizando o premiando según el cumplimiento estricto de las restricciones detectadas.
+- Entrena BERTopic sobre nombre y etiquetas de recetas.
+- Usa `SentenceTransformer`, UMAP y HDBSCAN.
+- Aplica muestreo estratificado por cuartiles de `minutes`.
+- Permite semillas culinarias para orientar categorías como vegano, postres, desayuno o recetas rápidas.
+- Guarda el modelo en `models/bertopic_recipes`.
 
-### 3.3. Generación (`llm.py`)
-*   **Gestión del LLM Local**: Carga y prepara el modelo (ej. Gemma) asegurando la inferencia en GPU.
-*   **Prompting y Contexto**: Inyecta los `steps` de la receta recuperada y el resumen de reseñas al sistema de prompts para generar una respuesta que recomiende y justifique por qué encaja con los gustos del usuario.
+### 2.3 Indexación
 
-### 3.4. Resumen Extractivo (`summarizer.py`)
-*   Implementación pura del algoritmo de grafos **TextRank** usando similitud del coseno y PageRank. Extrae de forma dinámica las oraciones (consenso general) más representativas de todas las reviews, condensando la información y evitando sobrecargar el contexto del modelo de lenguaje.
+Archivo: `offline_pipeline.py`
 
----
+- Carga las recetas procesadas.
+- Carga BERTopic si está disponible.
+- Usa `RecipeRetriever.index_recipes()` para:
+  - generar embeddings de `name + description + ingredients`;
+  - persistirlos en ChromaDB;
+  - construir y guardar el índice BM25;
+  - guardar metadatos como nombre, minutos y tópico.
 
-## 4. Cumplimiento de Requisitos del Proyecto
+## 3. Pipeline online
 
-La arquitectura cubre holgadamente todos los requerimientos estipulados:
+### 3.1 Entrada principal
 
-| Requisito | Implementación en la Arquitectura |
-| :--- | :--- |
-| **Embeddings** | Generados con `SentenceTransformers` en el módulo *Retriever*. |
-| **Topic Modeling** | Implementado con `BERTopic` para categorización automática y filtrado semántico (*Topic-Aware Reranking*). |
-| **Búsqueda Híbrida** | Fusión RRF de rankings semánticos y léxicos (BM25) para máxima precisión. |
-| **Precisión Semántica** | Expansión de consultas y uso de **Cross-Encoder** para re-ranking con ajuste por restricciones. |
-| **Modelado de Tópicos** | Módulo offline *Topics* usando `BERTopic` para agrupar ítems/reseñas. |
-| **Resumen Extractivo** | Módulo `summarizer.py` aplicando algoritmo matemático `TextRank` (grafos y PageRank). |
-| **LLM** | Corazón del sistema (`llm.py` y `agent.py`). Modelo local. |
-| **RAG** | Módulo `retriever.py` integrando búsqueda híbrida y RRF para inyección de contexto. |
-| **Agentes** | Enrutador (`agent.py`) con decodificación restringida que decide qué módulo llamar. |
-| **Arquitectura** | Clara división lógica entre `offline_pipeline.py` y el agente online. |
+Archivo: `main.py`
 
----
+- Carga el retriever y el índice BM25.
+- Carga BERTopic para `topic-aware ranking` si existe.
+- Carga interacciones para resúmenes.
+- Carga un LLM local mediante Transformers.
+- Ejecuta el bucle conversacional.
 
-## 5. Pruebas y Validación (`test_search.py`)
-Para garantizar la calidad de la recuperación (RAG) sin tener que iniciar todo el agente de lenguaje natural, el sistema incorpora el script `test_search.py`. Este módulo de pruebas aísla el comportamiento del `retriever.py` y lanza consultas complejas contra el índice local para verificar de primera mano cómo actúan la fusión RRF, el Topic-Aware Reranking y la penalización por restricciones lógicas.
+### 3.2 Agente
 
----
+Archivo: `modules/agent.py`
 
-## 6. Consideraciones de Diseño
-- **No se usan frameworks cerrados**: Toda la lógica de enrutamiento (como el Router DAG) y el pipeline de RAG (RRF) se implementa directamente en código Python (evitando LangChain o LlamaIndex), evidenciando el dominio técnico profundo requerido por la rúbrica de evaluación.
-- **Eficiencia de Contexto**: El uso combinado de *Resumen Extractivo* previo a la inyección y de *RRF* garantiza que el LLM solo reciba los datos de máxima calidad, evitando alucinaciones y desbordamiento de tokens de contexto.
+Acciones disponibles:
+
+- `recomendar`: búsqueda local RAG.
+- `resumir`: TextRank sobre reseñas de una receta.
+- `web`: búsqueda externa básica cuando la consulta pide actualidad o información no local.
+
+El router intenta clasificar con el LLM y valida la salida contra el conjunto cerrado de acciones. Si no hay LLM o la salida no es válida, usa una heurística determinista.
+
+### 3.3 Recuperación híbrida
+
+Archivo: `modules/retriever.py`
+
+Componentes:
+
+- Embeddings con `paraphrase-multilingual-MiniLM-L12-v2`.
+- ChromaDB persistente para búsqueda semántica.
+- BM25 para búsqueda léxica.
+- Query expansion español-inglés para mejorar consultas sobre corpus en inglés.
+- Reciprocal Rank Fusion con `RRF_K = 60`.
+- Bonus de tópico del 50% si BERTopic clasifica consulta y receta en el mismo tópico.
+- Re-ranking final con `cross-encoder/ms-marco-MiniLM-L-6-v2`.
+- Penalización o bonus por restricciones, por ejemplo `sin horno`.
+
+### 3.4 Resumen extractivo
+
+Archivo: `modules/summarizer.py`
+
+Implementa TextRank:
+
+- división en oraciones;
+- tokenización y limpieza;
+- similitud de coseno entre oraciones;
+- PageRank;
+- selección de frases centrales.
+
+### 3.5 LLM
+
+Archivo: `modules/llm.py`
+
+- Carga modelos de lenguaje causales compatibles con Hugging Face Transformers.
+- Construye el prompt final con la consulta y el contexto recuperado.
+- Genera la respuesta en español usando generación determinista.
+
+## 4. Trazabilidad MITEX
+
+| Requisito | Archivo principal |
+| --- | --- |
+| Embeddings | `modules/retriever.py` |
+| Modelado de tópicos | `modules/topics.py` |
+| Resumen extractivo | `modules/summarizer.py` |
+| LLM | `modules/llm.py` |
+| RAG | `main.py`, `modules/retriever.py` |
+| Agentes | `modules/agent.py` |
+| Offline/online | `offline_pipeline.py`, `main.py` |
+| Limpieza y preprocesado | `datasets/preprocesado.py` |
+
+## 5. Validación recomendada
+
+- Ejecutar `python datasets/preprocesado.py` y comprobar que se generan los CSV procesados.
+- Ejecutar `python modules/topics.py` y revisar tópicos/visualizaciones.
+- Ejecutar `python offline_pipeline.py` para construir ChromaDB y BM25.
+- Ejecutar `python test_search.py` para validar recuperación sin cargar el LLM completo.
+- Ejecutar `python main.py` y probar consultas como:
+  - `quiero una receta rápida de pollo sin horno`;
+  - `resume las reseñas de la receta 12345`;
+  - `busca en internet una tendencia actual de recetas veganas`.

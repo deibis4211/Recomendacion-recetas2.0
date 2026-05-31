@@ -1,18 +1,25 @@
 \documentclass[11pt,a4paper]{article}
 \usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
 \usepackage[spanish]{babel}
 \usepackage{geometry}
-\geometry{top=3cm, bottom=3cm, left=2.5cm, right=2.5cm}
+\geometry{top=2.8cm, bottom=2.8cm, left=2.3cm, right=2.3cm}
 \usepackage{amsmath}
 \usepackage{amsfonts}
 \usepackage{amssymb}
 \usepackage{graphicx}
 \usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
 \usepackage{listings}
+\usepackage{xcolor}
 \usepackage{hyperref}
-\usepackage{color}
 \usepackage{tikz}
-\usetikzlibrary{shapes.geometric, arrows, positioning}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning}
+
+\setlength{\parskip}{0.35em}
+\setlength{\parindent}{0pt}
+\sloppy
 
 \definecolor{codegreen}{rgb}{0,0.6,0}
 \definecolor{codegray}{rgb}{0.5,0.5,0.5}
@@ -20,26 +27,26 @@
 \definecolor{backcolour}{rgb}{0.95,0.95,0.92}
 
 \lstdefinestyle{mystyle}{
-    backgroundcolor=\color{backcolour},   
+    backgroundcolor=\color{backcolour},
     commentstyle=\color{codegreen},
     keywordstyle=\color{magenta},
     numberstyle=\tiny\color{codegray},
     stringstyle=\color{codepurple},
     basicstyle=\ttfamily\footnotesize,
-    breakatwhitespace=false,         
-    breaklines=true,                 
-    captionpos=b,                    
-    keepspaces=true,                 
-    numbers=left,                    
-    numbersep=5pt,                  
-    showspaces=false,                
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=5pt,
+    showspaces=false,
     showstringspaces=false,
-    showtabs=false,                  
+    showtabs=false,
     tabsize=2
 }
 \lstset{style=mystyle}
 
-\title{\textbf{Proyecto Final MITEX: Sistema de Soporte Inteligente y Recomendación Conversacional de Recetas CulinaryRAG}}
+\title{\textbf{Proyecto Final MITEX: CulinaryRAG}\\Sistema de soporte inteligente y recomendación conversacional de recetas}
 \author{}
 \date{Curso 2025/2026}
 
@@ -51,184 +58,248 @@
 \newpage
 
 \section{Introducción y Objetivos}
-El presente proyecto documenta el diseño, desarrollo y validación de \textbf{CulinaryRAG}, un asistente conversacional inteligente y recomendador especializado en el dominio culinario. El sistema está construido a partir del dataset público de Kaggle \textit{Food.com Recsys Dataset}, el cual contiene más de 180,000 recetas e interacciones asociadas. 
 
-El principal desafío abordado es la superación de las limitaciones típicas de los recomendadores tradicionales (basados únicamente en filtrado colaborativo o coincidencia exacta de palabras clave), proporcionando una interfaz conversacional fluida que comprende las intenciones complejas del usuario (por ejemplo, preferencias dietéticas, restricciones de tiempo o negaciones del tipo "sin horno" o "sin gluten"). 
+Este informe documenta el diseño, implementación y validación de \textbf{CulinaryRAG}, un asistente conversacional especializado en el dominio culinario. El sistema recomienda recetas a partir de consultas en lenguaje natural, resume reseñas asociadas y puede activar una búsqueda web básica cuando la pregunta queda fuera de la base local.
 
-Para lograr esto, CulinaryRAG integra de manera cohesiva diversas técnicas avanzadas de minería de textos:
+El corpus procede del dataset público \textit{Food.com Recsys Dataset}. Tras el preprocesado, el proyecto trabaja con recetas, ingredientes, pasos, etiquetas, tiempos de preparación y reseñas textuales. El objetivo funcional es superar una búsqueda exacta por palabras clave: el usuario puede formular restricciones como ``sin horno'', preferencias dietéticas, peticiones de recetas rápidas o solicitudes de resumen de opiniones.
+
+Desde el punto de vista de la asignatura, el sistema integra las técnicas exigidas por el enunciado:
 \begin{itemize}
-    \item \textbf{Procesamiento de Lenguaje Natural (NLP)} para la limpieza y preparación masiva de datos.
-    \item \textbf{Modelado de Tópicos (Topic Modeling)} mediante BERTopic en fase offline para categorizar y etiquetar semánticamente las recetas.
-    \item \textbf{Búsqueda Híbrida Vectorial y Léxica} en tiempo real basada en ChromaDB y BM25, unificada mediante Reciprocal Rank Fusion (RRF).
-    \item \textbf{Re-ranking Semántico} a través de un modelo Cross-Encoder para asegurar la precisión y manejar negaciones lógicas.
-    \item \textbf{Resumen Extractivo} basado en el algoritmo de grafos TextRank para condensar reseñas históricas y alimentar la ventana de contexto de forma eficiente.
-    \item \textbf{Orquestación Agéntica} mediante un Grafo Acíclico Dirigido (DAG) en tiempo real con decodificación restringida sobre un LLM local (\textit{Gemma-3-1b-it}), incorporando un fallback dinámico a búsquedas web.
+    \item \textbf{Embeddings}: generación de representaciones densas con \texttt{SentenceTransformer}.
+    \item \textbf{Modelado de tópicos}: entrenamiento offline con BERTopic sobre el corpus de recetas.
+    \item \textbf{Resumen extractivo}: extracción de frases centrales con TextRank sobre reseñas.
+    \item \textbf{LLM}: generación final de respuestas naturales mediante un modelo local.
+    \item \textbf{RAG}: recuperación de documentos locales e inyección de contexto al prompt.
+    \item \textbf{Agentes}: router que decide entre recomendación local, resumen y búsqueda web.
+    \item \textbf{Adquisición y preprocesado}: limpieza y filtrado de corpus como extra opcional.
 \end{itemize}
 
-El sistema evita explícitamente el uso de frameworks de alto nivel opacos como LangChain o LlamaIndex, garantizando el control absoluto de cada etapa del pipeline y demostrando el dominio técnico de las herramientas fundamentales de minería de textos.
-
----
+El proyecto evita frameworks completos de alto nivel como LangChain o LlamaIndex. La recuperación, el enrutamiento, el resumen y la construcción del prompt están implementados directamente en módulos Python del repositorio.
 
 \section{Diseño Arquitectónico Global}
 
-El sistema CulinaryRAG se divide lógicamente en dos grandes bloques operativos para garantizar la escalabilidad técnica y un tiempo de respuesta óptimo en producción: el \textbf{Pipeline Offline} (procesamiento y preparación) y el \textbf{Pipeline Online} (bucle de interacción en tiempo real).
+La arquitectura se divide en dos bloques: un \textbf{pipeline offline}, que prepara el corpus y los índices persistentes, y un \textbf{pipeline online}, que atiende las consultas del usuario en tiempo real.
 
 \begin{figure}[h]
 \centering
-\begin{tikzpicture}[nodeDistance=1.5cm, auto]
-    % Estilos
-    \tikzstyle{block} = [rect, draw, fill=blue!10, text width=4.5cm, text centered, rounded corners, minimum height=1cm]
-    \tikzstyle{cloud} = [draw, ellipse, fill=red!10, text width=2.5cm, text centered, minimum height=0.8cm]
-    \tikzstyle{database} = [draw, cylinder, fill=green!10, shape border rotate=90, text width=2.5cm, text centered, minimum height=1cm]
-    \tikzstyle{line} = [draw, -latex', thick]
-    
-    % Nodos Pipeline Offline
-    \node [cloud] (dataset) {Food.com CSV};
-    \node [block, right=of dataset] (ingest) {Ingestión y Limpieza\\(Filtro de Calidad)};
-    \node [block, right=of ingest] (bertopic) {BERTopic Offline\\(Muestreo Estratificado)};
-    \node [database, below=of bertopic] (chroma) {ChromaDB + BM25\\(Índices Persistentes)};
-    
-    % Nodos Pipeline Online
-    \node [block, below=of ingest, yshift=-1.5cm] (agent) {Router LLM (DAG)\\Decodificación Restringida};
-    \node [block, left=of agent] (query) {Consulta Usuario};
-    \node [block, below=of agent] (retriever) {Hybrid Retriever\\RRF + Topic Boost + Cross-Encoder};
-    \node [block, right=of retriever] (tools) {Módulos Externos\\(TextRank / Web Fallback)};
-    \node [block, below=of retriever] (llm) {Sintetizador LLM\\(Generación de Respuesta)};
+\shorthandoff{>}
+\resizebox{0.98\textwidth}{!}{%
+\begin{tikzpicture}[font=\scriptsize]
+    \tikzstyle{block} = [rectangle, draw, fill=blue!10, text width=2.05cm, text centered, rounded corners, minimum height=0.74cm]
+    \tikzstyle{store} = [rectangle, draw, fill=green!10, text width=2.05cm, text centered, rounded corners, minimum height=0.74cm]
+    \tikzstyle{external} = [rectangle, draw, fill=orange!10, text width=2.05cm, text centered, rounded corners, minimum height=0.68cm]
+    \tikzstyle{io} = [draw, ellipse, fill=red!10, text width=1.85cm, text centered, minimum height=0.66cm]
+    \tikzstyle{line} = [draw, ->, thick]
 
-    % Conexiones Offline
-    \path [line] (dataset) -- (ingest);
-    \path [line] (ingest) -- (bertopic);
-    \path [line] (bertopic) -- (chroma);
-    
-    % Conexiones Online
-    \path [line] (query) -- (agent);
-    \path [line] (agent) -- (retriever);
-    \path [line] (retriever) -- (llm);
-    \path [line] (chroma) |- (retriever);
-    \path [line] (retriever) -- (tools);
-    \path [line] (tools) -- (llm);
-\end{tikzpicture}
-\caption{Diagrama de la Arquitectura de Bloques Global de CulinaryRAG.}
+    \node[font=\bfseries\scriptsize] at (-6.35, 2.15) {Offline};
+    \node[font=\bfseries\scriptsize] at (-6.35, -0.35) {Online};
+
+    \node [io] (dataset) at (-5.15, 2.15) {Food.com CSV};
+    \node [block] (ingest) at (-2.35, 2.15) {Ingestión\\limpieza};
+    \node [block] (bertopic) at (0.45, 2.15) {BERTopic};
+    \node [store] (indices) at (3.25, 2.15) {ChromaDB\\BM25};
+
+    \node [io] (query) at (-5.15, -0.35) {Consulta\\usuario};
+    \node [block] (agent) at (-2.35, -0.35) {Router\\agéntico};
+    \node [block] (retriever) at (0.45, -0.35) {Retriever\\RRF + tópicos};
+    \node [block] (llm) at (3.25, -0.35) {LLM\\sintetizador};
+    \node [io] (answer) at (6.05, -0.35) {Respuesta};
+    \node [external] (tools) at (0.45, -1.75) {TextRank\\Web fallback};
+
+    \path [line] (dataset.east) -- (ingest.west);
+    \path [line] (ingest.east) -- (bertopic.west);
+    \path [line] (bertopic.east) -- (indices.west);
+    \path [line] (query.east) -- (agent.west);
+    \path [line] (agent.east) -- (retriever.west);
+    \path [line] (retriever.east) -- (llm.west);
+    \path [line] (llm.east) -- (answer.west);
+    \path [line] (indices.south) to[out=-90,in=60] (retriever.north);
+    \path [line] (retriever.south) -- (tools.north);
+    \path [line] (tools.east) to[out=0,in=-120] (llm.south);
+\end{tikzpicture}%
+}
+\shorthandon{>}
+\caption{Arquitectura global de CulinaryRAG.}
 \label{fig:arquitectura}
 \end{figure}
 
-\subsection{Pipeline Offline (Pre-procesamiento)}
-Este bloque se ejecuta de forma asíncrona antes de la interacción con el usuario y realiza las tareas más pesadas computacionalmente:
+\subsection{Pipeline Offline}
+
+El pipeline offline concentra las operaciones costosas que no deben ejecutarse en cada consulta:
 \begin{enumerate}
-    \item \textbf{Ingestión y Filtro de Calidad (`ingestion.py` / `preprocesado.py`):} Lee los datasets originales, limpia caracteres especiales y etiquetas HTML, elimina registros nulos y aplica filtros estadísticos para conservar únicamente interacciones de alta calidad (usuarios activos con al menos 8 reseñas).
-    \item \textbf{Modelado de Tópicos Estratificado (`topics.py`):} Extrae una muestra representativa de 10,000 recetas mediante un muestreo estratificado por tiempos de cocción. Entrena un modelo BERTopic con y sin semillas directivas para agrupar las recetas en estilos culinarios (vegana, repostería, desayunos, etc.).
-    \item \textbf{Indexación Semántica y Léxica (`retriever.py`):} Genera embeddings vectoriales ricos combinando el nombre, la descripción y los ingredientes de las recetas mediante el modelo transformer \textit{paraphrase-multilingual-MiniLM-L12-v2} y los almacena de forma persistente en ChromaDB. En paralelo, construye un índice léxico basado en BM25 (`bm25_model.pkl`) a partir de la tokenización normalizada de los mismos textos.
+    \item \textbf{Preprocesado} (\texttt{datasets/preprocesado.py}): carga los CSV originales, conserva campos relevantes, elimina reseñas nulas, filtra usuarios con al menos 8 reseñas y cruza interacciones con recetas válidas.
+    \item \textbf{Modelado de tópicos} (\texttt{modules/topics.py}): entrena BERTopic sobre una muestra estratificada por tiempo de preparación. El modelo puede usar semillas culinarias para mejorar la interpretabilidad de los clústeres.
+    \item \textbf{Indexación semántica y léxica} (\texttt{offline\_pipeline.py}, \texttt{modules/retriever.py}): crea embeddings a partir de nombre, descripción e ingredientes, los persiste en ChromaDB y genera un índice BM25 serializado.
 \end{enumerate}
 
-\subsection{Pipeline Online (Bucle en Tiempo Real)}
-Cuando el usuario introduce una consulta, el sistema la procesa instantáneamente a través de un flujo estructurado operado por varios scripts interconectados:
+\subsection{Pipeline Online}
+
+El pipeline online se ejecuta desde \texttt{main.py}. El flujo es:
 \begin{enumerate}
-    \item \textbf{Agente Orquestador DAG (`agent.py`):} El LLM actúa como router inteligente. Analiza la consulta y decide cuál es la mejor ruta mediante \textbf{decodificación restringida}. Esto obliga al LLM a emitir exactamente una de las acciones válidas: `recomendador` (búsqueda de recetas local), `resumidor` (síntesis de reseñas) o `web` (búsqueda externa).
-    \item \textbf{Buscador Híbrido Avanzado (`retriever.py`):} Si se activa el recomendador, se realiza primero una fase de "Query Expansion" para enriquecer semánticamente la búsqueda. Tras esto, ejecuta la búsqueda paralela semántica (en ChromaDB) y léxica (con BM25). Las puntuaciones se unifican mediante la fórmula RRF.
-    \item \textbf{Re-ranking con Restricciones Lógicas (`retriever.py`):} Se clasifica el tópico de la consulta del usuario mediante BERTopic. Si una receta coincide con el tópico de la pregunta, recibe un \textbf{Topic Boost del 50\%}. Posteriormente, se aplican ajustes dinámicos de puntuación detectando restricciones (ej. intolerancias) de la petición del usuario. Finalmente, los candidatos superan un modelo \textbf{Cross-Encoder} para evaluar la relevancia contextual exacta.
-    \item \textbf{Generación y TextRank (`summarizer.py` / `llm.py`):} Si las recetas elegidas tienen exceso de reseñas, se aplica el algoritmo extractivo \textbf{TextRank} implementado de forma vectorial (similitud de coseno y PageRank) para inyectar solo las oraciones más relevantes en el contexto del LLM. Por último, `llm.py` gestiona la llamada al modelo para sintetizar la respuesta y presentarla de forma natural.
+    \item Carga de índices locales, modelo de tópicos si existe, interacciones y LLM.
+    \item Enrutamiento de la consulta mediante \texttt{modules/agent.py}. El router intenta clasificar con el LLM y valida la salida contra acciones permitidas; si no hay LLM o la salida no es válida, aplica una heurística determinista.
+    \item Ejecución de herramienta: recomendación local, resumen de reseñas o búsqueda web simple.
+    \item Construcción del prompt con el contexto recuperado.
+    \item Síntesis final con el LLM configurado.
 \end{enumerate}
 
----
-
-\section{Detalles de Implementación}
-
-Esta sección analiza las decisiones técnicas críticas tomadas durante el desarrollo de los módulos de CulinaryRAG, justificando su diseño en función de la robustez, el rendimiento y la flexibilidad.
-
-\subsection{Procesamiento e Ingestión Eficiente}
-La ingesta masiva se implementa en `preprocesado.py`. Para evitar la inclusión de datos irrelevantes o ruidosos que degraden los embeddings y sobrecarguen la base vectorial, se aplican filtros estrictos:
-\begin{lstlisting}[language=python, caption=Filtro de calidad de interacciones y usuarios activos en preprocesado.py.]
-# Limpieza: Eliminar interacciones sin reseña escrita
-df_interactions = df_interactions.dropna(subset=['review'])
-
-# Filtro de calidad: Usuarios con al menos 8 reseñas
-reviews_por_user = df_interactions['user_id'].value_counts()
-usuarios_def = reviews_por_user[reviews_por_user >= 8].index
-df_interactions_filtrado = df_interactions[df_interactions['user_id'].isin(usuarios_def)].copy()
-\end{lstlisting}
-Este preprocesado asegura que la base de datos local contenga datos de alta fidelidad, vinculando recetas válidas con reseñas sustanciales y reduciendo la dimensionalidad del corpus antes del modelado de tópicos.
-
-\subsection{Búsqueda Híbrida RRF y Re-ranking Topic-Aware}
-El corazón de la recuperación se encuentra en `retriever.py`. Combina la recuperación semántica (que comprende la sinonimia y conceptos generales) con la recuperación léxica (crucial para marcas específicas de ingredientes o términos técnicos). 
-La unificación se realiza mediante una implementación propia de \textbf{Reciprocal Rank Fusion (RRF)} con $k=60$, mejorada dinámicamente con un multiplicador de tópico:
-\begin{lstlisting}[language=python, caption=Implementación manual de RRF con Topic-Aware Boosting en retriever.py.]
-# Fusión RRF con Bonus por Tópico
-all_ids = set(rank_sem.keys()) | set(rank_lex.keys())
-rrf_scores = []
-for doc_id in all_ids:
-    score = 0.0
-    if doc_id in rank_sem:
-        score += 1.0 / (RRF_K + rank_sem[doc_id])
-    if doc_id in rank_lex:
-        score += 1.0 / (RRF_K + rank_lex[doc_id])
-    
-    # BONUS DE TÓPICO: Empuje del 50% si el tópico de la receta coincide con el de la consulta
-    if query_topic != -1 and id_to_topic.get(doc_id) == query_topic:
-        score *= 1.5
-        
-    rrf_scores.append((doc_id, score))
-\end{lstlisting}
-Esta fusión de rankings se complementa con dos técnicas avanzadas. En primer lugar, la detección de restricciones (`_detect_constraints` en `retriever.py`) altera artificialmente la puntuación dependiendo del grado en el que la receta respete las intolerancias o negaciones lógicas del usuario. 
-Por último, se aplica un reordenamiento final mediante el Cross-Encoder `cross-encoder/ms-marco-MiniLM-L-6-v2`. A diferencia de los Bi-Encoders que comparan vectores precalculados de forma aislada, el Cross-Encoder realiza un procesamiento conjunto de la consulta expandida y el documento a través de mecanismos de atención completa, capturando relaciones lógicas que el índice semántico inicial podría pasar por alto.
-
-Adicionalmente, se construyó el script `test_search.py` como un banco de pruebas unitario para permitir una validación en profundidad de este sistema de recuperación aislado (sin tener que iterar todo el modelo LLM online), asegurando la calidad del ranking bajo condiciones complejas.
-
-\subsection{Agente Router y Decodificación Restringida}
-Para la orquestación, implementamos un router DAG basado en el LLM. Los frameworks tradicionales usan prompts de sistema con la esperanza de que el LLM devuelva un JSON o un comando estructurado, lo cual es propenso a fallos en modelos locales pequeños (1B a 3B). 
-En CulinaryRAG, se utiliza \textbf{decodificación restringida} a nivel de token. Durante el paso del bucle donde el modelo debe emitir el nombre de la acción, restringimos los logits del vocabulario del tokenizador para permitir única y exclusivamente los tokens que conforman las herramientas válidas (`calculadora`, `recomendador`, `resumidor`, `web`), garantizando un comportamiento 100\% determinista en la toma de decisiones agénticas.
-
-\subsection{Resumen Extractivo con TextRank}
-Cuando el recomendador recupera recetas populares con decenas de reseñas extensas, inyectar el texto completo en el contexto del LLM saturaría los tokens de entrada y provocaría el fenómeno del olvido o alucinaciones. 
-El módulo `summarizer.py` implementa el algoritmo **TextRank**. Este enfoque modela las oraciones como nodos en un grafo, donde los arcos representan la similitud léxica o de solapamiento de palabras (normalizada por longitud). Tras aplicar el algoritmo de centralidad (PageRank), se extraen únicamente las $N$ oraciones más centrales, logrando un resumen denso que conserva el consenso general de la comunidad sobre la receta.
-
-\section{Discusión, Validación y Resultados}
-
-Esta sección describe las pruebas analíticas e investigaciones empíricas diseñadas para validar las decisiones de arquitectura de CulinaryRAG frente a aproximaciones baseline.
-
-\subsection{Validación de Modelado de Tópicos (Experimento de Semillas)}
-Para categorizar recetas complejas en base a ingredientes y etiquetas, implementamos un experimento comparativo (`experimento.py`) para evaluar la madurez de **BERTopic** bajo dos configuraciones:
-\begin{enumerate}
-    \item \textbf{Baseline No Supervisado (Sin Semillas):} El modelo agrupa libremente los documentos basándose en UMAP y HDBSCAN.
-    \item \textbf{Modelo Guiado (Con Semillas):} Se introducen listas de semillas culinarias para orientar la formación de clústeres hacia conceptos de negocio significativos (e.g., vegano, postres, desayunos).
-\end{enumerate}
-
-Para garantizar la representatividad estadística del modelo, se implementó un muestreo estratificado. Dividir el dataset original por cuartiles del tiempo de preparación (`minutes`) y muestrear proporcionalmente (10,000 recetas en total) asegura que tanto los platos de cocción lenta (asados, guisos) como los snacks ultrarrápidos (5 minutos) estén equilibradamente representados.
+\section{Matriz de Cumplimiento del Enunciado}
 
 \begin{table}[h]
 \centering
-\begin{tabular}{lcc}
+\scriptsize
+\resizebox{0.94\textwidth}{!}{%
+\begin{tabular}{p{3.0cm}p{6.1cm}p{4.2cm}}
 \toprule
-\textbf{Métrica de Evaluación} & \textbf{Modelo No Supervisado} & \textbf{Modelo Guiado (Semillas)} \\
+\textbf{Requisito} & \textbf{Implementación en el proyecto} & \textbf{Evidencia} \\
 \midrule
-Coherencia de Tópicos ($C_v$) & 0.42 & \textbf{0.57} \\
-Clústeres de Negocio Identificados & 3 / 10 & \textbf{9 / 10} \\
-Proporción de Tópicos Ruidosos (Outliers) & 28.4\% & \textbf{14.2\%} \\
-Interpretabilidad Humana & Media-Baja (mezcla de ingredientes) & \textbf{Alta (estilos de cocina definidos)} \\
+Embeddings & Representaciones vectoriales de recetas mediante \texttt{paraphrase-multilingual-MiniLM-L12-v2}. & \texttt{retriever.py}: indexación \\
+Modelado de tópicos & BERTopic entrenado offline, con muestreo estratificado y opción de semillas. & \texttt{modules/topics.py}, \texttt{modules/experimento.py} \\
+Resumen extractivo & TextRank propio con matriz de similitud y PageRank para extraer frases centrales de reseñas. & \texttt{modules/summarizer.py} \\
+LLM & Carga de modelo local mediante Transformers y generación determinista. & \texttt{modules/llm.py} \\
+RAG & Recuperación híbrida local y prompt final con contexto recuperado. & \texttt{main.py}, \texttt{build\_prompt()} \\
+Agentes & Router de herramientas: recomendar, resumir o web; ejecución modular de acciones. & \texttt{modules/agent.py} \\
+Arquitectura offline/online & Separación entre \texttt{offline\_pipeline.py} y el bucle interactivo \texttt{main.py}. & Figura \ref{fig:arquitectura} \\
+Extras opcionales & Limpieza, filtrado de calidad, query expansion, BM25, RRF, Cross-Encoder y fallback web. & \texttt{datasets/}, \texttt{modules/retriever.py} \\
 \bottomrule
-\end{tabular}
-\caption{Resultados Comparativos del Modelado de Tópicos en CulinaryRAG.}
+\end{tabular}%
+}
+\caption{Trazabilidad entre requisitos del enunciado e implementación.}
+\label{tab:cumplimiento}
+\end{table}
+
+\section{Detalles de Implementación}
+
+\subsection{Ingestión y Limpieza}
+
+La construcción del corpus se implementa en \texttt{datasets/preprocesado.py}. El filtrado elimina interacciones sin reseña escrita y conserva usuarios con volumen suficiente de opiniones, reduciendo ruido y favoreciendo que el módulo de resumen tenga texto útil.
+
+\begin{lstlisting}[language=python, caption=Filtro de interacciones de calidad.]
+df_interactions = df_interactions.dropna(subset=['review'])
+reviews_por_user = df_interactions['user_id'].value_counts()
+usuarios_def = reviews_por_user[reviews_por_user >= 8].index
+df_interactions_filtrado = df_interactions[
+    df_interactions['user_id'].isin(usuarios_def)
+].copy()
+\end{lstlisting}
+
+\subsection{Recuperación Híbrida}
+
+El módulo \texttt{modules/retriever.py} combina dos señales complementarias:
+\begin{itemize}
+    \item \textbf{ChromaDB + embeddings}: captura similitud semántica aunque no coincidan literalmente las palabras.
+    \item \textbf{BM25}: preserva precisión léxica para ingredientes, etiquetas o restricciones concretas.
+\end{itemize}
+
+Los rankings se fusionan mediante \textit{Reciprocal Rank Fusion} con $k=60$. Si existe modelo BERTopic cargado, se aplica un bonus del 50\% cuando el tópico del documento coincide con el de la consulta.
+
+\begin{lstlisting}[language=python, caption=Fusión RRF con refuerzo por tópico.]
+score = 0.0
+if doc_id in rank_sem:
+    score += 1.0 / (RRF_K + rank_sem[doc_id])
+if doc_id in rank_lex:
+    score += 1.0 / (RRF_K + rank_lex[doc_id])
+if query_topic != -1 and id_to_topic.get(doc_id) == query_topic:
+    score *= 1.5
+\end{lstlisting}
+
+Después de la fusión, un Cross-Encoder (\texttt{cross-encoder/ms-marco-MiniLM-L-6-v2}) reordena los candidatos. Además, la función \texttt{\_constraint\_adjustment()} penaliza recetas incompatibles con restricciones detectadas, por ejemplo recetas con horno cuando la consulta pide ``sin horno''.
+
+\subsection{Modelado de Tópicos}
+
+BERTopic se entrena con embeddings, reducción UMAP y clustering HDBSCAN. El corpus usado para tópicos concatena nombre y etiquetas de receta, de forma que los clústeres reflejen familias culinarias. El muestreo estratificado por cuartiles de \texttt{minutes} evita que el entrenamiento quede dominado por recetas de una sola duración.
+
+\subsection{Resumen Extractivo}
+
+\texttt{modules/summarizer.py} implementa TextRank sin depender de servicios externos. El procedimiento divide reseñas en oraciones, tokeniza, construye una matriz de similitud de coseno y aplica PageRank. Las frases con mayor centralidad se devuelven en el orden original para conservar legibilidad.
+
+\subsection{LLM y Generación}
+
+\texttt{modules/llm.py} encapsula la carga de modelos compatibles con Transformers. Por defecto, \texttt{main.py} intenta usar una copia local de Gemma 3 1B Instruct; si no está disponible, usa \texttt{Qwen/Qwen2.5-1.5B-Instruct}. La generación se realiza con \texttt{do\_sample=False}, lo que mejora la reproducibilidad durante la defensa.
+
+\section{Validación y Discusión}
+
+\subsection{Validación por Módulos}
+
+\begin{table}[h]
+\centering
+\scriptsize
+\resizebox{0.92\textwidth}{!}{%
+\begin{tabular}{p{3.2cm}p{5.0cm}p{5.2cm}}
+\toprule
+\textbf{Módulo} & \textbf{Qué se valida} & \textbf{Criterio de aceptación} \\
+\midrule
+Preprocesado & CSV procesados sin campos críticos nulos y con reseñas utilizables. & Se generan \texttt{Processed\_recipes.csv} y \texttt{Processed\_interactions.csv}. \\
+Tópicos & Coherencia e interpretabilidad de clústeres BERTopic. & Tópicos no triviales, outliers controlados y etiquetas comprensibles. \\
+Retriever & Calidad del ranking ante consultas con ingredientes y restricciones. & Los primeros resultados respetan intención y restricciones principales. \\
+Resumen & Extracción de frases centrales de reseñas. & El resumen conserva opiniones representativas sin saturar el prompt. \\
+Agente & Selección correcta de herramienta. & Recomendación para consultas culinarias, resumen si se piden reseñas, web si se pide actualidad. \\
+LLM/RAG & Respuesta final en español basada en contexto local. & La respuesta cita recetas recuperadas y no inventa recetas fuera del contexto. \\
+\bottomrule
+\end{tabular}%
+}
+\caption{Plan de validación funcional por módulo.}
+\label{tab:validacion}
+\end{table}
+
+\subsection{Experimento de Tópicos}
+
+El script \texttt{modules/experimento.py} permite comparar un BERTopic no supervisado frente a un modelo guiado con semillas. La hipótesis es que las semillas producen clústeres más alineados con categorías culinarias útiles para recomendación.
+
+\begin{table}[h]
+\centering
+\scriptsize
+\resizebox{0.90\textwidth}{!}{%
+\begin{tabular}{p{4.0cm}p{4.2cm}p{4.2cm}}
+\toprule
+\textbf{Aspecto evaluado} & \textbf{Modelo sin semillas} & \textbf{Modelo con semillas} \\
+\midrule
+Formación de tópicos & Agrupación puramente estadística. & Agrupación guiada por categorías culinarias. \\
+Interpretabilidad & Puede mezclar ingredientes frecuentes. & Más cercana a conceptos como postres, vegano o desayuno. \\
+Uso en el retriever & Menos estable para topic boost. & Más útil para reforzar recetas del mismo dominio. \\
+Coste de preparación & Menor intervención humana. & Requiere definir semillas, pero mejora control semántico. \\
+\bottomrule
+\end{tabular}%
+}
+\caption{Comparación cualitativa del modelado de tópicos.}
 \label{tab:experimento}
 \end{table}
 
-Los resultados de la Tabla \ref{tab:experimento} demuestran que el modelo guiado con semillas disminuye drásticamente el porcentaje de documentos asignados al tópico outlier (-1) y mejora la métrica de coherencia semántica. En el modelo puramente no supervisado, BERTopic tiende a agrupar recetas por ingredientes comunes y genéricos (ej. sal, pimienta), perdiendo la semántica del estilo de preparación. El uso de semillas forzó al espacio latente a estructurarse en torno a dimensiones de negocio culinarias, permitiendo el funcionamiento efectivo del *Topic-Aware Boost* en el recomendador.
+\subsection{Limitaciones}
+
+El sistema cumple el enunciado, pero presenta límites relevantes:
+\begin{itemize}
+    \item El fallback web usa una consulta HTML básica a DuckDuckGo; sirve como demostración agéntica, no como scraper robusto.
+    \item El Cross-Encoder usado está entrenado para inglés, por lo que el sistema traduce o expande consultas españolas con términos ingleses para mejorar la señal.
+    \item La calidad final depende de haber ejecutado previamente el pipeline offline y de disponer de los modelos descargados.
+\end{itemize}
+
+\section{Instrucciones de Ejecución}
+
+El flujo recomendado para reproducir el sistema es:
+\begin{enumerate}
+    \item Instalar dependencias con \texttt{pip install -r requirements.txt}.
+    \item Colocar los CSV originales en \texttt{datasets/original/}.
+    \item Ejecutar \texttt{python datasets/preprocesado.py}.
+    \item Entrenar tópicos con \texttt{python modules/topics.py}.
+    \item Crear índices con \texttt{python offline\_pipeline.py}.
+    \item Lanzar el asistente con \texttt{python main.py}.
+\end{enumerate}
+
+Para validar únicamente la recuperación se puede ejecutar \texttt{python test\_search.py}, lo que permite probar el ranking sin cargar todo el LLM.
+
 
 
 \section{Conclusiones y Trabajo Futuro}
 
-El desarrollo de CulinaryRAG demuestra la viabilidad de construir un recomendador de recetas conversacional altamente sofisticado y preciso utilizando tecnologías de minería de textos locales y personalizadas. Al rechazar el uso de herramientas rígidas prefabricadas, el proyecto evidencia un control granular sobre las etapas críticas de indexación, recuperación híbrida (RRF), procesamiento de tópicos y enrutamiento agéntica.
+CulinaryRAG demuestra una integración completa de técnicas de minería de textos en un asistente especializado. El sistema separa correctamente preparación offline y ejecución online, combina recuperación semántica y léxica, usa tópicos para mejorar el ranking, resume reseñas con TextRank y genera respuestas finales mediante un LLM.
 
-\subsection{Principales Logros del Sistema}
-\begin{itemize}
-    \item \textbf{Precisión Semántica:} La combinación de RRF + Cross-Encoder resuelve satisfactoriamente las consultas complejas y las negaciones críticas (por ejemplo, recetas sin horno).
-    \item \textbf{Eficiencia de Contexto:} El pipeline offline y el resumen TextRank garantizan un consumo de recursos en GPU/VRAM altamente optimizado, ideal para modelos de lenguaje locales.
-    \item \textbf{Robustez Agéntica:} La decodificación restringida sobre los logits de Gemma-3 elimina las alucinaciones del router, logrando un flujo de control 100\% predecible.
-\end{itemize}
-
-\subsection{Líneas de Trabajo Futuro}
-Como líneas de desarrollo futuro, se propone:
+Como trabajo futuro se propone:
 \begin{enumerate}
-    \item \textbf{Personalización de Usuario Histórica:} Integrar la base de datos de reseñas históricas del usuario para ajustar dinámicamente los pesos semánticos de RRF en base a perfiles alimenticios individuales precalculados de forma asíncrona.
-    \item \textbf{Optimización del Web Fallback:} Implementar un raspador (scraper) en tiempo real en el agente Web para extraer y estructurar automáticamente recetas procedentes de blogs externos, enriqueciendo la generación cuando la base de datos local sea insuficiente.
+    \item Añadir perfiles de usuario persistentes para personalizar los pesos de ranking.
+    \item Reemplazar el fallback web por un extractor estructurado con control de fuentes.
+    \item Incorporar métricas cuantitativas guardadas automáticamente para comparar variantes de recuperación.
+    \item Implementar una restricción real de logits en el router si se quiere garantizar selección de herramienta a nivel de token.
 \end{enumerate}
 
 \end{document}
