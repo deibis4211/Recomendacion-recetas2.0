@@ -1,55 +1,55 @@
-# CulinaryRAG: Intelligent Recipe Recommendation System
+# CulinaryRAG: Sistema Inteligente de Recomendación de Recetas
 
-CulinaryRAG is an advanced conversational support system and recipe recommender developed as the final project for the Master in Technological Innovation (MITEX). 
+CulinaryRAG es un sistema avanzado de soporte conversacional y recomendación de recetas desarrollado como proyecto final para el Máster en Innovación Tecnológica (MITEX). 
 
-This system leverages a hybrid architecture combining classical text mining techniques with modern neural models. It integrates dense embeddings, topic modeling (BERTopic), lexical search (BM25), Reciprocal Rank Fusion (RRF), extractive summarization (TextRank), Retrieval-Augmented Generation (RAG), a local Large Language Model (LLM), and an agentic tool router to provide a robust and accurate user experience.
+Este sistema emplea una arquitectura híbrida que combina técnicas clásicas de minería de textos con modelos neuronales modernos. Integra representaciones vectoriales densas (embeddings), modelado de tópicos (BERTopic), búsqueda léxica (BM25), Fusión de Rangos Recíprocos (RRF), resumen extractivo (TextRank), Generación Aumentada por Recuperación (RAG), un Modelo de Lenguaje de Gran Escala (LLM) local y un enrutador agéntico de herramientas para proporcionar una experiencia de usuario robusta y precisa.
 
 ---
 
-## Architecture and Requirements Fulfillment
+## Arquitectura y Cumplimiento de Requisitos
 
-The system has been designed to strictly fulfill the architectural and technical requirements specified in the project guidelines:
+El sistema ha sido diseñado para cumplir estrictamente con los requisitos técnicos y arquitectónicos especificados en las directrices del proyecto:
 
-| Technical Requirement | Implementation Details |
+| Requisito Técnico | Detalles de Implementación |
 | :--- | :--- |
-| **Dense Embeddings** | The `modules/retriever.py` component generates dense vector representations using `SentenceTransformer` and persists them in a local `ChromaDB` vector database. |
-| **Topic Modeling** | The `modules/topics.py` component trains a `BERTopic` model offline using stratified sampling to assign latent topics to recipes. |
-| **Extractive Summarization** | The `modules/summarizer.py` component implements the `TextRank` algorithm to extract the most relevant sentences from user reviews. |
-| **Language Model (LLM)** | The `modules/llm.py` component loads and serves a local LLM compatible with the Hugging Face `transformers` library. |
-| **Retrieval-Augmented Gen.** | The `main.py` controller retrieves the local context and injects it into a dynamic prompt for final synthesis. |
-| **Agentic Router** | The `modules/agent.py` component acts as a deterministic and heuristic router, deciding between recipe recommendation, summarization, or web fallback. |
-| **Offline/Online Separation** | `offline_pipeline.py` prepares and serializes the indexes, while `main.py` executes the low-latency interactive loop. |
-| **Advanced Retrieval (Extra)**| Includes a lexical index (BM25), RRF fusion, Cross-Encoder Re-Ranking, and heuristic constraint adjustments. |
+| **Embeddings Densos** | El componente `modules/retriever.py` genera representaciones vectoriales densas usando `SentenceTransformer` y las persiste en una base de datos vectorial local `ChromaDB`. |
+| **Modelado de Tópicos** | El componente `modules/topics.py` entrena un modelo `BERTopic` offline usando muestreo estratificado para asignar tópicos latentes a las recetas. |
+| **Resumen Extractivo** | El componente `modules/summarizer.py` implementa el algoritmo `TextRank` para extraer las oraciones más relevantes de las reseñas de los usuarios. |
+| **Modelo de Lenguaje (LLM)** | El componente `modules/llm.py` carga y sirve un LLM local compatible con la biblioteca `transformers` de Hugging Face. |
+| **Generación Aumentada (RAG)** | El controlador `main.py` recupera el contexto local y lo inyecta en un prompt dinámico para la síntesis final. |
+| **Enrutador Agéntico** | El componente `modules/agent.py` actúa como un enrutador determinista y heurístico, decidiendo entre recomendar recetas, resumir texto o realizar consultas de respaldo en la web. |
+| **Separación Offline/Online** | `offline_pipeline.py` prepara y serializa los índices, mientras que `main.py` ejecuta el bucle interactivo de baja latencia. |
+| **Recuperación Avanzada (Extra)**| Incluye un índice léxico (BM25), fusión RRF, Re-Ranking mediante Cross-Encoder y ajustes heurísticos de restricciones. |
 
 ---
 
-## Repository Structure
+## Estructura del Repositorio
 
 ```text
 .
-├── main.py                     # Main interactive loop for the online assistant
-├── offline_pipeline.py         # Construction and serialization of persistent indexes
-├── test_search.py              # Isolated testing suite for the retrieval module
+├── main.py                     # Bucle interactivo principal para el asistente online
+├── offline_pipeline.py         # Construcción y serialización de los índices persistentes
+├── test_search.py              # Suite de pruebas aisladas para el módulo de recuperación
 ├── modules/
-│   ├── agent.py                # Action router and tool execution logic
-│   ├── ingestion.py            # Text cleaning and normalization
-│   ├── llm.py                  # LLM loading and response generation
-│   ├── retriever.py            # Hybrid retrieval (ChromaDB, BM25, RRF, Cross-Encoder)
-│   ├── summarizer.py           # TextRank implementation for reviews
-│   ├── topics.py               # BERTopic training and inference
-│   └── experimento.py          # Seedless topic modeling comparison
+│   ├── agent.py                # Enrutador de acciones y lógica de ejecución de herramientas
+│   ├── ingestion.py            # Limpieza y normalización de texto
+│   ├── llm.py                  # Carga del LLM y generación de respuestas
+│   ├── retriever.py            # Recuperación híbrida (ChromaDB, BM25, RRF, Cross-Encoder)
+│   ├── summarizer.py           # Implementación de TextRank para reseñas
+│   ├── topics.py               # Entrenamiento e inferencia de BERTopic
+│   └── experimento.py          # Comparación de modelado de tópicos sin semillas
 ├── datasets/
-│   └── preprocesado.py         # Construction and filtering of processed CSVs
+│   └── preprocesado.py         # Construcción y filtrado de los archivos CSV procesados
 └── docu/
-    ├── memoria.tex             # Main technical report (LaTeX source)
-    └── memoria.pdf             # Compiled technical report
+    ├── memoria.tex             # Memoria técnica principal (código fuente LaTeX)
+    └── memoria.pdf             # Memoria técnica compilada
 ```
 
 ---
 
-## Installation and Setup
+## Instalación y Configuración
 
-It is strictly recommended to run this project within an isolated virtual environment to prevent dependency conflicts.
+Se recomienda estrictamente ejecutar este proyecto dentro de un entorno virtual aislado para evitar conflictos de dependencias.
 
 ```bash
 python -m venv .venv
@@ -57,29 +57,29 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Model Management
-Hugging Face models (embeddings, re-rankers, and LLMs) are downloaded automatically upon first execution and stored in the local cache. 
-- The default LLM is `Qwen/Qwen2.5-1.5B-Instruct` to ensure compatibility without requiring authentication tokens. 
-- If a cached version of `Gemma-3-1b-it` is detected, the system will prioritize it.
+### Gestión de Modelos
+Los modelos de Hugging Face (embeddings, re-rankers y LLMs) se descargan automáticamente en la primera ejecución y se almacenan en la caché local. 
+- El LLM por defecto es `Qwen/Qwen2.5-1.5B-Instruct` para asegurar compatibilidad sin requerir tokens de autenticación. 
+- Si se detecta una versión en caché de `Gemma-3-1b-it`, el sistema la priorizará automáticamente.
 
 ---
 
-## Data Pipeline
+## Flujo de Datos
 
-The system expects the original Food.com dataset files in the following directory structure:
+El sistema espera que los conjuntos de datos originales de Food.com se encuentren en la siguiente estructura:
 
 ```text
 datasets/original/Filtered_recipes.csv
 datasets/original/Filtered_interactions.csv
 ```
 
-To execute the data preprocessing pipeline:
+Para ejecutar la canalización de preprocesamiento de datos:
 
 ```bash
 python datasets/preprocesado.py
 ```
 
-This script cleans the text, handles missing values, and generates the processed datasets required by the offline pipeline:
+Este script limpia el texto, maneja valores faltantes y genera los conjuntos de datos procesados requeridos por la canalización offline:
 
 ```text
 datasets/Processed_recipes.csv
@@ -88,40 +88,40 @@ datasets/Processed_interactions.csv
 
 ---
 
-## Execution Workflow
+## Flujo de Ejecución
 
-1. **Topic Modeling Training**: Train the BERTopic model to extract metadata.
+1. **Entrenamiento de Modelado de Tópicos**: Entrena el modelo BERTopic para extraer metadatos.
    ```bash
    python modules/topics.py
    ```
 
-2. **Index Generation**: Build and serialize the ChromaDB and BM25 indexes.
+2. **Generación de Índices**: Construye y serializa los índices ChromaDB y BM25.
    ```bash
    python offline_pipeline.py
    ```
 
-3. **Isolated Testing (Optional)**: Verify the retrieval subsystem without loading the LLM.
+3. **Pruebas Aisladas (Opcional)**: Verifica el subsistema de recuperación sin cargar el LLM.
    ```bash
    python test_search.py
    ```
 
-4. **Launch Assistant**: Start the main interactive loop.
+4. **Lanzar Asistente**: Inicia el bucle interactivo principal.
    ```bash
    python main.py
    ```
 
-*(Optional)* To force the usage of a specific Hugging Face model, set the environment variable:
+*(Opcional)* Para forzar el uso de un modelo específico de Hugging Face, establezca la variable de entorno:
 ```bash
-CULINARYRAG_MODEL="path/or/huggingface/model_id" python main.py
+CULINARYRAG_MODEL="ruta/al/modelo/huggingface" python main.py
 ```
 
 ---
 
-## Technical Documentation
+## Documentación Técnica
 
-The comprehensive technical report, including the architectural design, design justifications, compliance matrix, modular validation, limitations, and future work, is located in `docu/memoria.tex`.
+El informe técnico exhaustivo, que incluye el diseño arquitectónico, justificaciones de diseño, matriz de cumplimiento, validación modular, limitaciones y trabajo futuro, se encuentra en `docu/memoria.tex`.
 
-To compile the LaTeX source code into a PDF document:
+Para compilar el código fuente LaTeX en un documento PDF:
 
 ```bash
 cd docu
