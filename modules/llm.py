@@ -19,7 +19,7 @@ def generate_response(
     prompt: str,
     model,
     tokenizer,
-    max_new_tokens: int = 150
+    max_new_tokens: int = 300
 ) -> str:
     """
     Genera texto a partir de un prompt usando el LLM cargado.
@@ -73,12 +73,12 @@ def build_prompt(user_query: str, context: str, action: str = "recomendar") -> s
         return (
             "Eres un chef encargado de adaptar y transcribir recetas. Responde siempre en español.\n\n"
             "INSTRUCCIONES ESTRICTAS:\n"
-            "1. Lee la receta del [CONTEXTO RECUPERADO].\n"
-            "2. Modifica la receta si el usuario pide restricciones:\n"
-            "   - Si dice 'sin horno', cambia el horneado por cocinar en sartén o refrigerar.\n"
-            "   - Si es 'vegano', sustituye huevos por lino, mantequilla por margarina vegetal, y leche por leche vegetal.\n"
+            "1. Lee la receta del [CONTEXTO RECUPERADO] y NO TE INVENTES ingredientes ni datos que no aparezcan en ella.\n"
+            "2. Propon versiones alternativas de la receta SOLO SI el usuario pide restricciones:\n"
+            "Por ej. sin horno, sin gluten, sin lactosa, vegana, etc.\n"
             "3. Escribe el resultado final usando este formato exacto:\n\n"
-            "**INGREDIENTES ADAPTADOS:**\n"
+            "**[NOMBRE DE LA RECETA]**\n"
+            "**INGREDIENTES:**\n"
             "- [Ingrediente 1]\n\n"
             "**PASOS DE PREPARACIÓN:**\n"
             "1. [Paso 1]\n\n"
@@ -104,11 +104,19 @@ def build_prompt(user_query: str, context: str, action: str = "recomendar") -> s
         clean_context = re.sub(r'\[.*?\]', '', context)
         
         return (
-            "Eres un asistente de información general. Responde a la consulta del usuario utilizando ÚNICAMENTE los datos del contexto provisto.\n"
-            "Escribe en español de forma natural, clara y perfectamente redactada. NO uses un lenguaje robótico ni mayúsculas excesivas.\n\n"
-            f"Consulta: {clean_query}\n"
-            f"Contexto: {clean_context}\n\n"
-            "Respuesta directa y natural:"
+            "[SISTEMA]\n"
+            "Eres un extractor de datos estricto. Tu memoria interna ha sido borrada. "
+            "SOLO puedes usar la información que aparece entre las etiquetas <CONTEXTO>.\n\n"
+            "[REGLAS CRÍTICAS]\n"
+            "1. Si la respuesta no está en el <CONTEXTO>, responde exactamente: 'Lo siento, la información no está disponible en los documentos.'\n"
+            "2. Prohibido usar conocimientos previos.\n"
+            "3. Si el contexto dice 'A' y tú crees que es 'B', responde 'A' obligatoriamente.\n"
+            "4. Sé breve.\n\n"
+            f"[CONSULTA]\n{clean_query}\n\n"
+            f"<CONTEXTO>\n{clean_context}\n\n"
+            "[PROCESAMIENTO]\n"
+            "Analiza el contexto paso a paso y extrae el dato exacto para la consulta.\n"
+            "Respuesta directa:"
         )
     
     else:
