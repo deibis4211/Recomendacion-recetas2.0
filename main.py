@@ -11,19 +11,13 @@ Flujo:
 """
 
 import os
-
 import pandas as pd
-
 from modules.agent import execute_tool, route_query
 from modules.llm import build_prompt, generate_response, load_llm
 from modules.retriever import DEFAULT_MODEL, RecipeRetriever, _resolve_hf_model
 
-
 def _default_llm_model():
-    gemma_cache = os.path.expanduser(
-        "~/.cache/huggingface/hub/models--google--gemma-3-1b-it/snapshots"
-    )
-    # Si no tiene el modelo Gemma ya descargado (requiere token), usamos Qwen 
+    gemma_cache = os.path.expanduser("~/.cache/huggingface/hub/models--google--gemma-3-1b-it/snapshots")
     if not os.path.isdir(gemma_cache):
         return "Qwen/Qwen2.5-1.5B-Instruct"
 
@@ -36,29 +30,21 @@ def _default_llm_model():
         return "Qwen/Qwen2.5-1.5B-Instruct"
     return max(snapshots, key=os.path.getmtime)
 
-
 def _load_interactions(path: str = "datasets/Processed_interactions.csv"):
     if not os.path.exists(path):
         return None
     return pd.read_csv(path)
 
-
 def _load_retriever():
     retriever = RecipeRetriever()
     if not retriever.load_bm25():
-        raise RuntimeError(
-            "No se encontró el índice BM25. Ejecuta primero offline_pipeline.py."
-        )
+        raise RuntimeError("No se encontró el índice BM25. Ejecuta primero offline_pipeline.py.")
 
     try:
         from bertopic import BERTopic
-
         for model_path in ("models/bertopic_recipes", "bertopic_recipes"):
             if os.path.exists(model_path):
-                topic_model = BERTopic.load(
-                    model_path,
-                    embedding_model=_resolve_hf_model(DEFAULT_MODEL),
-                )
+                topic_model = BERTopic.load(model_path, embedding_model=_resolve_hf_model(DEFAULT_MODEL))
                 retriever.set_topic_model(topic_model)
                 break
     except Exception as exc:
@@ -66,10 +52,10 @@ def _load_retriever():
 
     return retriever
 
-
 if __name__ == "__main__":
     print("Cargando Asistente Recomendador...")
     retriever = _load_retriever()
+    print("Cargando interacciones (puede tardar un poco)...")
     interactions_df = _load_interactions()
 
     model_id = os.getenv("CULINARYRAG_MODEL", "") or _default_llm_model()
@@ -92,7 +78,9 @@ if __name__ == "__main__":
                 interactions_df=interactions_df,
                 top_k=1,
             )
-            prompt = build_prompt(user_input, context)
+
+            prompt = build_prompt(user_input, context, routed["action"])
+            print("\nGenerando respuesta...")
             answer = generate_response(prompt, model, tokenizer, max_new_tokens=400)
         except Exception as exc:
             answer = f"No he podido completar la consulta: {exc}"
