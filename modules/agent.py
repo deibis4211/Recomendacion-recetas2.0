@@ -21,14 +21,13 @@ from modules.summarizer import summarize_reviews
 VALID_ACTIONS = ("recomendar", "resumir", "web")
 
 
-def _heuristic_route(query: str) -> str:
+def _heuristic_route(query: str) -> Optional[str]:
     normalized = query.lower()
     if any(word in normalized for word in ("resume", "resumen", "resumir", "opiniones", "reseñas", "reviews")):
         return "resumir"
-    if any(word in normalized for word in ("web", "internet", "online", "actual", "últim", "ultimo", "noticia")):
+    if any(word in normalized for word in ("web", "internet", "online", "actual", "últim", "ultimo", "noticia", "quien", "quién", "presidente", "qué es")):
         return "web"
-    return "recomendar"
-
+    return None
 
 def _llm_route(query: str, llm_model, tokenizer) -> Optional[str]:
     if llm_model is None or tokenizer is None:
@@ -37,11 +36,17 @@ def _llm_route(query: str, llm_model, tokenizer) -> Optional[str]:
     from modules.llm import generate_response
 
     prompt = (
-        "Elige una única herramienta para esta consulta culinaria.\n"
-        "Herramientas válidas: recomendar, resumir, web.\n"
-        "Devuelve solo una palabra.\n\n"
-        f"Consulta: {query}\n"
-        "Herramienta:"
+        "Clasifica la consulta del usuario en una de las siguientes categorías: recomendar, resumir, web.\n"
+        "Devuelve ÚNICAMENTE la palabra exacta.\n\n"
+        "Ejemplos:\n"
+        "- Consulta: dime cómo preparar una tarta de manzana fácil\nCategoría: recomendar\n"
+        "- Consulta: dime qué dice la gente sobre el plato 9032\nCategoría: resumir\n"
+        "- Consulta: cuál es la capital de Francia\nCategoría: web\n"
+        "- Consulta: necesito ideas para una cena romántica sin gluten\nCategoría: recomendar\n"
+        "- Consulta: búscame las últimas noticias sobre la NASA\nCategoría: web\n"
+        "- Consulta: quiero un desayuno rápido con avena y plátano\nCategoría: recomendar\n\n"
+        f"- Consulta: {query}\n"
+        "Categoría:"
     )
     output = generate_response(prompt, llm_model, tokenizer, max_new_tokens=4).lower()
     for action in VALID_ACTIONS:
@@ -72,10 +77,9 @@ def _rewrite_query(query: str, llm_model, tokenizer) -> str:
 
 def route_query(query: str, llm_model=None, tokenizer=None) -> dict:
     """
-    Usa decodificación restringida para forzar al LLM a elegir una herramienta válida
-    ('recomendar', 'web', 'resumir') y extraer los argumentos.
+    Usa el LLM para decidir la acción, o cae en la heurística si el LLM falla.
     """
-    action = _llm_route(query, llm_model, tokenizer) or _heuristic_route(query)
+    action = _llm_route(query, llm_model, tokenizer) or _heuristic_route(query) or "recomendar"
     
     # Si vamos a buscar recetas, traducimos la frase a palabras clave
     arguments = query
@@ -113,7 +117,8 @@ def execute_tool(
             interactions_df["recipe_id"].astype(str) == str(recipe_id),
             "review",
         ].dropna().tolist()
-        return summarize_reviews(reviews)
+        summary = summarize_reviews(reviews)
+        return f"Resumen de opiniones de la receta {recipe_id}:\n{summary}"
 
     return _web_fallback(arguments)
 
@@ -137,15 +142,15 @@ def _format_recipe_results(results: list[Dict[str, Any]]) -> str:
         minutes = metadata.get("minutes", "?")
         topic = metadata.get("topic", "?")
         score = float(result.get("score", 0.0))
-        text = str(result.get("text", "")).replace("\n", " ")
+        text = str(result.get("text", ""))
         lines.append(
             f"{index}. {name} (id: {result.get('id')}, {minutes} min, tópico {topic}, score {score:.3f})\n"
-            f"   {text[:500]}"
+            f"   {text}"
         )
     return "\n".join(lines)
 
 
-def _web_fallback(query: str, max_results: int = 10) -> str:
+def _web_fallback(query: str, max_results: int = 3) -> str:
     try:
         from ddgs import DDGS
     except ImportError as exc:

@@ -90,6 +90,7 @@ if __name__ == "__main__":
                 routed["arguments"],
                 retriever=retriever,
                 interactions_df=interactions_df,
+                top_k=1,
             )
             prompt = build_prompt(user_input, context)
             answer = generate_response(prompt, model, tokenizer, max_new_tokens=400)
