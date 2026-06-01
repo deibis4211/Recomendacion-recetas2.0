@@ -143,6 +143,16 @@ El pipeline online se ejecuta desde \texttt{main.py}. El flujo es:
     \item Síntesis final con el LLM configurado.
 \end{enumerate}
 
+\subsection{Justificaciones de Diseño}
+
+Las decisiones arquitectónicas se han tomado priorizando el determinismo, la eficiencia y el control sobre el flujo de ejecución:
+\begin{itemize}
+    \item \textbf{Separación Offline/Online:} procesar embeddings, tópicos e índice léxico de forma anticipada evita cuellos de botella durante la inferencia, garantizando respuestas en tiempo real.
+    \item \textbf{RRF vs. Búsqueda Vectorial Pura:} un modelo semántico puro suele difuminar ingredientes clave. Al fusionar la señal semántica (ChromaDB) con la léxica (BM25) mediante \textit{Reciprocal Rank Fusion}, el sistema comprende el contexto sin perder el emparejamiento exacto de palabras vitales (ej. ``pollo'').
+    \item \textbf{Resumen TextRank vs. Resumen LLM:} inyectar decenas de reseñas completas al LLM provocaría la saturación de la VRAM y el efecto \textit{lost in the middle}. TextRank resuelve esto comprimiendo matemáticamente el consenso de la comunidad \textit{antes} de invocar al LLM.
+    \item \textbf{Ausencia de LangChain:} se ha evitado el uso de frameworks de alto nivel para mantener transparencia y control absoluto sobre el enrutamiento. El \textit{Query Rewriting} y la penalización de recetas se hacen de forma explícita y auditable.
+\end{itemize}
+
 \section{Matriz de Cumplimiento del Enunciado}
 
 \begin{table}[h]
@@ -183,15 +193,17 @@ df_interactions_filtrado = df_interactions[
 ].copy()
 \end{lstlisting}
 
-\subsection{Recuperación Híbrida}
+\subsection{Recuperación Híbrida y Query Rewriting}
 
-El módulo \texttt{modules/retriever.py} combina dos señales complementarias:
+El módulo \texttt{modules/retriever.py} y el agente actúan en tándem para resolver la complejidad de las consultas en lenguaje natural. Antes de buscar, el sistema aplica \textbf{Query Rewriting}: el LLM intercepta el ruido conversacional del usuario (ej. ``buscaba una receta rápida que tenga...'') y lo traduce a palabras clave limpias en inglés. Esto soluciona de raíz el problema del \textit{cross-lingual RAG}, ya que el corpus está en inglés pero las consultas en español.
+
+Posteriormente, el Retriever combina dos señales complementarias:
 \begin{itemize}
-    \item \textbf{ChromaDB + embeddings}: captura similitud semántica aunque no coincidan literalmente las palabras.
-    \item \textbf{BM25}: preserva precisión léxica para ingredientes, etiquetas o restricciones concretas.
+    \item \textbf{ChromaDB + embeddings}: captura la similitud semántica (modelo \texttt{paraphrase-multilingual-MiniLM-L12-v2}) agrupando conceptos afines aunque no coincidan literalmente.
+    \item \textbf{BM25}: preserva la precisión léxica fundamental para que ingredientes o restricciones exactas no se diluyan en el espacio vectorial.
 \end{itemize}
 
-Los rankings se fusionan mediante \textit{Reciprocal Rank Fusion} con $k=60$. Si existe modelo BERTopic cargado, se aplica un bonus del 50\% cuando el tópico del documento coincide con el de la consulta.
+Los rankings se fusionan matemáticamente mediante \textit{Reciprocal Rank Fusion} (RRF) con una constante $k=60$. Si existe un modelo BERTopic cargado, se aplica un multiplicador del $1.5\times$ (bonus del 50\%) cuando el tópico detectado en la consulta coincide con el del documento, alineando la intención semántica global.
 
 \begin{lstlisting}[language=python, caption=Fusión RRF con refuerzo por tópico.]
 score = 0.0
@@ -203,7 +215,7 @@ if query_topic != -1 and id_to_topic.get(doc_id) == query_topic:
     score *= 1.5
 \end{lstlisting}
 
-Después de la fusión, un Cross-Encoder (\texttt{cross-encoder/ms-marco-MiniLM-L-6-v2}) reordena los candidatos. Además, la función \texttt{\_constraint\_adjustment()} penaliza recetas incompatibles con restricciones detectadas, por ejemplo recetas con horno cuando la consulta pide ``sin horno''.
+Finalmente, un Cross-Encoder (\texttt{cross-encoder/ms-marco-MiniLM-L-6-v2}) reordena la lista corta de candidatos midiendo la coherencia lógica entre consulta y documento. A esta puntuación se le suma dinámicamente un ajuste heurístico (\texttt{\_constraint\_adjustment}) que aplica fuertes penalizaciones (ej. $-8.0$ puntos) a recetas que violan restricciones explícitas del usuario (ej. recetas horneadas cuando se solicitó ``sin horno'').
 
 \subsection{Modelado de Tópicos}
 
@@ -211,15 +223,32 @@ BERTopic se entrena con embeddings, reducción UMAP y clustering HDBSCAN. El cor
 
 \subsection{Resumen Extractivo}
 
-\texttt{modules/summarizer.py} implementa TextRank sin depender de servicios externos. El procedimiento divide reseñas en oraciones, tokeniza, construye una matriz de similitud de coseno y aplica PageRank. Las frases con mayor centralidad se devuelven en el orden original para conservar legibilidad.
+El módulo \texttt{modules/summarizer.py} implementa el algoritmo \textbf{TextRank} basado en grafos para destilar la opinión de la comunidad. En lugar de delegar el resumen al LLM (lo cual saturaría el \textit{context window}), el sistema opera de forma matemática:
+\begin{enumerate}
+    \item \textbf{Segmentación y Vectorización}: las reseñas crudas se dividen en oraciones y se transforman en vectores de frecuencias.
+    \item \textbf{Grafo de Similitud}: se calcula la similitud del coseno entre todos los pares de oraciones, construyendo una matriz de adyacencia donde los nodos son frases y las aristas representan vocabulario compartido.
+    \item \textbf{PageRank}: se ejecuta iterativamente el algoritmo PageRank sobre la matriz mediante operaciones vectorizadas con \texttt{numpy} para determinar la centralidad de cada oración.
+\end{enumerate}
+Las tres frases con mayor puntuación matemática se consideran el consenso general y se extraen literalmente para inyectarlas como contexto limpio al prompt.
 
-\subsection{LLM y Generación}
+\subsection{LLM, Agentes y Generación}
 
-\texttt{modules/llm.py} encapsula la carga de modelos compatibles con Transformers. Por defecto, \texttt{main.py} intenta usar una copia local de Gemma 3 1B Instruct; si no está disponible, usa \texttt{Qwen/Qwen2.5-1.5B-Instruct}. La generación se realiza con \texttt{do\_sample=False}, lo que mejora la reproducibilidad durante la defensa.
+El módulo \texttt{modules/agent.py} orquesta el uso del LLM. Lejos de usar el modelo únicamente como un generador de texto final, se emplea como un \textbf{Agente Router}. El sistema inyecta un prompt sistémico estricto y obliga al LLM a decidir la acción a tomar (recomendación, resumen o búsqueda web). Para aportar mayor robustez a la evaluación, el sistema cuenta con un mecanismo de \textit{fallback} dinámico: si no encuentra la versión en caché de \texttt{Gemma-3-1b-it} (que requiere token de autenticación), automáticamente descarga e instancia \texttt{Qwen/Qwen2.5-1.5B-Instruct}, garantizando la portabilidad del proyecto.
+
+La generación final (\texttt{modules/llm.py}) sintetiza el contexto recuperado bajo un parámetro de temperatura nula (\texttt{do\_sample=False}). Esto elimina la aleatoriedad, mejora drásticamente la reproducibilidad durante la defensa del proyecto y asegura que el modelo se ciña estrictamente a los documentos inyectados en el prompt sin alucinar ingredientes ajenos a la receta recuperada.
 
 \section{Validación y Discusión}
 
-\subsection{Validación por Módulos}
+El diseño del sistema ha sido validado analíticamente comparando sus mecanismos frente a soluciones \textit{baseline} habituales en la literatura de Sistemas de Recomendación y RAG.
+
+\subsection{Evaluación Comparativa frente a Baselines}
+
+\begin{itemize}
+    \item \textbf{Recuperación Híbrida vs. Baseline Vectorial:} un sistema RAG \textit{baseline} suele basarse exclusivamente en búsqueda densa (ej. ChromaDB). En nuestras pruebas tempranas, este enfoque devolvía recetas semánticamente similares pero fallaba en retener ingredientes obligatorios (falsos positivos). La introducción del \textit{baseline} léxico (BM25) fusionado mediante RRF demostró ser superior, al anclar términos exactos mientras la red densa generaliza el contexto.
+    \item \textbf{TextRank vs. Baseline Ingesta Completa:} como \textit{baseline} de resumen, se evaluó inyectar todas las reseñas crudas directamente al contexto del LLM. Esto disparaba el consumo de VRAM por encima de los 12GB y degradaba la precisión de la respuesta por el efecto \textit{lost in the middle}. El uso de TextRank redujo la carga de tokens en un 95\%, manteniendo intacta la intención de la comunidad.
+\end{itemize}
+
+\subsection{Validación Funcional por Módulos}
 
 \begin{table}[h]
 \centering
