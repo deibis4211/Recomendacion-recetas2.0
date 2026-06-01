@@ -311,6 +311,6 @@ class RecipeRetriever:
         return scored_results[:top_k]
 
 if __name__ == "__main__":
-ç    print("Probando inicialización del Retriever...")
+    print("Probando inicialización del Retriever...")
     retriever = RecipeRetriever()
     print("Retriever listo.")

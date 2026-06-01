@@ -145,18 +145,23 @@ def _format_recipe_results(results: list[Dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def _web_fallback(query: str) -> str:
-    encoded = urllib.parse.urlencode({"q": query})
-    url = f"https://duckduckgo.com/html/?{encoded}"
+def _web_fallback(query: str, max_results: int = 10) -> str:
     try:
-        request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(request, timeout=8) as response:
-            html = response.read().decode("utf-8", errors="ignore")
+        from ddgs import DDGS
+    except ImportError as exc:
+        return f"Error: La librería ddgs no está instalada. Ejecuta: pip install ddgs"
+
+    results = []
+    try:
+        with DDGS() as ddgs:
+            for idx, item in enumerate(ddgs.text(query, max_results=max_results), start=1):
+                title = item.get("title", "(sin titulo)")
+                body = item.get("body", "")
+                results.append(f"- {title}: {body}")
     except Exception as exc:
         return f"No se pudo consultar la web en este entorno: {exc}"
 
-    snippets = re.findall(r'<a rel="nofollow" class="result__a"[^>]*>(.*?)</a>', html)
-    clean = [re.sub(r"<[^>]+>", "", item).strip() for item in snippets[:3]]
-    if not clean:
+    if not results:
         return "No se encontraron resultados web útiles."
-    return "Resultados web encontrados:\n" + "\n".join(f"- {item}" for item in clean)
+    
+    return "Resultados web encontrados:\n" + "\n".join(results)

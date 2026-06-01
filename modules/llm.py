@@ -77,9 +77,12 @@ def build_prompt(user_query: str, context: str) -> str:
     Construye el prompt final para sintetizar una respuesta con el contexto recuperado.
     """
     return (
-        "Eres CulinaryRAG, un asistente de recomendación de recetas. "
-        "Responde en español, de forma directa y usando solo el contexto disponible. "
-        "Recomienda 1 o 2 recetas concretas, menciona por qué encajan y evita bloques de código.\n\n"
+        "Eres CulinaryRAG, un asistente experto culinario. "
+        "Responde en español basándote ÚNICAMENTE en la información del contexto recuperado (que puede estar en inglés, tradúcela si es necesario). "
+        "Puedes hacer deducciones lógicas evidentes a partir del contexto (ej: si el contexto habla de la victoria de un equipo, puedes deducir que ganó). "
+        "NO inventes datos o ingredientes que no estén respaldados por el texto original. "
+        "Si el usuario pide una receta, recomiéndala basándote en el contexto. Si pide un resumen de opiniones, resúmelas. Si hace otra pregunta, contéstala con los datos dados. "
+        "Si el contexto no tiene información para responder a la pregunta, indícalo.\n\n"
         f"Consulta del usuario:\n{user_query}\n\n"
         f"Contexto recuperado:\n{context}\n\n"
         "Respuesta en español:"

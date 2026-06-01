@@ -92,7 +92,7 @@ if __name__ == "__main__":
                 interactions_df=interactions_df,
             )
             prompt = build_prompt(user_input, context)
-            answer = generate_response(prompt, model, tokenizer)
+            answer = generate_response(prompt, model, tokenizer, max_new_tokens=400)
         except Exception as exc:
             answer = f"No he podido completar la consulta: {exc}"
 
