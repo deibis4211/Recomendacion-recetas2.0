@@ -15,9 +15,9 @@ El sistema ha sido diseñado para cumplir estrictamente con los requisitos técn
 | **Embeddings Densos** | El componente `modules/retriever.py` genera representaciones vectoriales densas usando `SentenceTransformer` y las persiste en una base de datos vectorial local `ChromaDB`. |
 | **Modelado de Tópicos** | El componente `modules/topics.py` entrena un modelo `BERTopic` offline usando muestreo estratificado para asignar tópicos latentes a las recetas. |
 | **Resumen Extractivo** | El componente `modules/summarizer.py` implementa el algoritmo `TextRank` para extraer las oraciones más relevantes de las reseñas de los usuarios. |
-| **Modelo de Lenguaje (LLM)** | El componente `modules/llm.py` carga y sirve un LLM local compatible con la biblioteca `transformers` de Hugging Face. |
-| **Generación Aumentada (RAG)** | El controlador `main.py` recupera el contexto local y lo inyecta en un prompt dinámico para la síntesis final. |
-| **Enrutador Agéntico** | El componente `modules/agent.py` actúa como un enrutador determinista y heurístico, decidiendo entre recomendar recetas, resumir texto o realizar consultas de respaldo en la web. |
+| **Modelo de Lenguaje (LLM)** | El componente `modules/llm.py` sirve el LLM local e implementa una arquitectura de Múltiples Prompts Agénticos, seleccionando dinámicamente el prompt según la tarea (recetas, resúmenes o web). |
+| **Generación Aumentada (RAG)** | El controlador `main.py` recupera el contexto local y lo inyecta en el prompt específico para la síntesis final, aplicando transformaciones estructurales. |
+| **Enrutador Agéntico** | El componente `modules/agent.py` emplea un clasificador LLM basado en *Few-Shot Prompting* para inferir la intención del usuario, respaldado por heurísticas de contingencia. |
 | **Separación Offline/Online** | `offline_pipeline.py` prepara y serializa los índices, mientras que `main.py` ejecuta el bucle interactivo de baja latencia. |
 | **Recuperación Avanzada (Extra)**| Incluye un índice léxico (BM25), fusión RRF, Re-Ranking mediante Cross-Encoder y ajustes heurísticos de restricciones. |
 
