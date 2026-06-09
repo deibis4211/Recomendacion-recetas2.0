@@ -116,7 +116,7 @@ def build_prompt(user_query: str, context: str, action: str = "recomendar") -> s
             f"<CONTEXTO>\n{clean_context}\n\n"
             "[PROCESAMIENTO]\n"
             "Analiza el contexto paso a paso y extrae el dato exacto para la consulta.\n"
-            "Respuesta directa:"
+            "Respuesta directa:\n"
         )
     
     else:

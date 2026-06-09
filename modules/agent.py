@@ -18,6 +18,7 @@ from typing import Any, Dict, Optional
 from modules.summarizer import summarize_reviews
 
 
+# Acciones válidas para el router LLM
 VALID_ACTIONS = ("recomendar", "resumir", "web")
 
 
@@ -43,12 +44,9 @@ def _llm_route(query: str, llm_model, tokenizer) -> Optional[str]:
         "- Consulta: quiero una receta de pollo al horno con patatas\nCategoría: recomendar\n"
         "- Consulta: dime qué dice la gente sobre el plato 9032\nCategoría: resumir\n"
         "- Consulta: de qué trata el plato 'id'\nCategoría: resumir\n"
-        "- Consulta: resume las reseñas del plato 'id'\nCategoría: resumir\n"
         "- Consulta: cuál es la capital de Francia\nCategoría: web\n"
         "- Consulta: necesito ideas para una cena romántica sin gluten\nCategoría: recomendar\n"
         "- Consulta: búscame las últimas noticias sobre la NASA\nCategoría: web\n"
-        "- Consulta: busca en internet el ganador del ultimo mundial de futbol\nCategoría: web\n"
-        "- Consulta: quiero un desayuno rápido con avena y plátano\nCategoría: recomendar\n\n"
         f"- Consulta: {query}\n"
         "Categoría:"
     )

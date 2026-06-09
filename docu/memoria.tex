@@ -166,9 +166,9 @@ Las decisiones arquitectónicas se han tomado priorizando el determinismo, la ef
 Embeddings & Representaciones vectoriales de recetas mediante \texttt{paraphrase-multilingual-MiniLM-L12-v2}. & \texttt{retriever.py}: indexación \\
 Modelado de tópicos & BERTopic entrenado offline, con muestreo estratificado y opción de semillas. & \texttt{modules/topics.py}, \texttt{modules/experimento.py} \\
 Resumen extractivo & TextRank propio con matriz de similitud y PageRank para extraer frases centrales de reseñas. & \texttt{modules/summarizer.py} \\
-LLM & Carga de modelo local mediante Transformers y generación determinista. & \texttt{modules/llm.py} \\
-RAG & Recuperación híbrida local y prompt final con contexto recuperado. & \texttt{main.py}, \texttt{build\_prompt()} \\
-Agentes & Router de herramientas: recomendar, resumir o web; ejecución modular de acciones. & \texttt{modules/agent.py} \\
+LLM & \textcolor{red}{Generación local mediante arquitectura de Múltiples Prompts Agénticos especializados por tarea.} & \texttt{modules/llm.py} \\
+RAG & \textcolor{red}{Recuperación híbrida local y selección dinámica del prompt final según acción.} & \texttt{main.py}, \texttt{build\_prompt()} \\
+Agentes & \textcolor{red}{Enrutador LLM (Few-Shot) con respaldo heurístico: recomendar, resumir o web.} & \texttt{modules/agent.py} \\
 Arquitectura offline/online & Separación entre \texttt{offline\_pipeline.py} y el bucle interactivo \texttt{main.py}. & Figura \ref{fig:arquitectura} \\
 Extras opcionales & Limpieza, filtrado de calidad, query expansion, BM25, RRF, Cross-Encoder y fallback web. & \texttt{datasets/}, \texttt{modules/retriever.py} \\
 \bottomrule
@@ -233,9 +233,13 @@ Las tres frases con mayor puntuación matemática se consideran el consenso gene
 
 \subsection{LLM, Agentes y Generación}
 
-El módulo \texttt{modules/agent.py} orquesta el uso del LLM. Lejos de usar el modelo únicamente como un generador de texto final, se emplea como un \textbf{Agente Router}. El sistema inyecta un prompt sistémico estricto y obliga al LLM a decidir la acción a tomar (recomendación, resumen o búsqueda web). Para aportar mayor robustez a la evaluación, el sistema cuenta con un mecanismo de \textit{fallback} dinámico: si no encuentra la versión en caché de \texttt{Gemma-3-1b-it} (que requiere token de autenticación), automáticamente descarga e instancia \texttt{Qwen/Qwen2.5-1.5B-Instruct}, garantizando la portabilidad del proyecto.
+\textcolor{red}{El módulo \texttt{modules/agent.py} orquesta el uso del LLM. Lejos de usar el modelo únicamente como un generador de texto final, se emplea como un \textbf{Agente Router}. El sistema inyecta un \textit{Few-Shot Prompt} que enseña al LLM mediante ejemplos a deducir la intención del usuario y enrutar la acción hacia: recomendación local, resumen de opiniones o búsqueda web como contingencia.}
 
-La generación final (\texttt{modules/llm.py}) sintetiza el contexto recuperado bajo un parámetro de temperatura nula (\texttt{do\_sample=False}). Esto elimina la aleatoriedad, mejora drásticamente la reproducibilidad durante la defensa del proyecto y asegura que el modelo se ciña estrictamente a los documentos inyectados en el prompt sin alucinar ingredientes ajenos a la receta recuperada.
+\textcolor{red}{La síntesis final (\texttt{modules/llm.py}) implementa una \textbf{Arquitectura de Múltiples Prompts Agénticos}. En lugar de saturar al modelo con un único megacomando propenso a alucinaciones de formato, el sistema selecciona dinámicamente un prompt especializado según la tarea. Además, se aplican técnicas de preprocesamiento programático (en Python) para resolver restricciones dietéticas y funcionales (ej. recetas veganas o sin horno) aislando la carga cognitiva del LLM, el cual opera con muestreo probabilístico (\texttt{do\_sample=True, temperature=0.7}) cuidadosamente ajustado para evitar bucles repetitivos comunes en modelos de escala reducida (1.5B).}
+
+\textcolor{red}{Finalmente, se evaluó la posibilidad de añadir Memoria Conversacional al sistema (para permitir preguntas de seguimiento). Sin embargo, pruebas exhaustivas demostraron que inyectar el historial de interacciones previas causa un fenómeno conocido como \textit{Context Contamination} (Contaminación de Contexto). Al retener prompts especializados anteriores (ej. instrucciones culinarias), el modelo perdía la capacidad de seguir reglas estrictas en consultas posteriores (ej. extracción de datos web), llegando a utilizar vocabulario gastronómico para responder preguntas factuales. Por ello, la arquitectura se diseñó como \textit{Stateless} estricta, priorizando la precisión técnica sobre la fluidez conversacional.}
+
+\textcolor{red}{Adicionalmente, se descartó el uso de \textit{Prompt Caching} (almacenamiento de la caché KV del \textit{System Prompt}) como técnica de optimización de inferencia. Al tratarse de un sistema RAG donde el contexto inyectado (recetas o reseñas) cambia dinámicamente con cada consulta del usuario, el prefijo del texto enviado al LLM nunca es idéntico entre iteraciones. Esto invalida el reciclaje de la caché matemática en implementaciones estándar basadas en \texttt{transformers}, obligando al modelo a recalcular los tensores desde cero en cada petición para garantizar una síntesis precisa del contexto recuperado en tiempo real.}
 
 \section{Validación y Discusión}
 
@@ -245,7 +249,7 @@ El diseño del sistema ha sido validado analíticamente comparando sus mecanismo
 
 \begin{itemize}
     \item \textbf{Recuperación Híbrida vs. Baseline Vectorial:} un sistema RAG \textit{baseline} suele basarse exclusivamente en búsqueda densa (ej. ChromaDB). En nuestras pruebas tempranas, este enfoque devolvía recetas semánticamente similares pero fallaba en retener ingredientes obligatorios (falsos positivos). La introducción del \textit{baseline} léxico (BM25) fusionado mediante RRF demostró ser superior, al anclar términos exactos mientras la red densa generaliza el contexto.
-    \item \textbf{TextRank vs. Baseline Ingesta Completa:} como \textit{baseline} de resumen, se evaluó inyectar todas las reseñas crudas directamente al contexto del LLM. Esto disparaba el consumo de VRAM por encima de los 12GB y degradaba la precisión de la respuesta por el efecto \textit{lost in the middle}. El uso de TextRank redujo la carga de tokens en un 95\%, manteniendo intacta la intención de la comunidad.
+    \item \textbf{TextRank vs. Baseline Ingesta Completa:} como \textit{baseline} de resumen, se evaluó inyectar todas las reseñas crudas directamente al contexto del LLM. Esto disparaba el consumo de VRAM por encima de los 12GB y degradaba la precisión de la respuesta por el efecto \textit{lost in the middle}. \textcolor{red}{El uso de TextRank redujo significativamente la carga de tokens sin perder la intención general de la comunidad.}
 \end{itemize}
 
 \subsection{Validación Funcional por Módulos}
