@@ -8,9 +8,8 @@ Este sistema emplea una arquitectura híbrida que combina técnicas clásicas de
 
 ## Arquitectura y Cumplimiento de Requisitos
 
-El sistema ha sido diseñado para cumplir estrictamente con los requisitos técnicos y arquitectónicos especificados en las directrices del proyecto:
 
-| Requisito Técnico | Detalles de Implementación |
+| Módulo | Detalles de Implementación |
 | :--- | :--- |
 | **Embeddings Densos** | El componente `modules/retriever.py` genera representaciones vectoriales densas usando `SentenceTransformer` y las persiste en una base de datos vectorial local `ChromaDB`. |
 | **Modelado de Tópicos** | El componente `modules/topics.py` entrena un modelo `BERTopic` offline usando muestreo estratificado para asignar tópicos latentes a las recetas. |
