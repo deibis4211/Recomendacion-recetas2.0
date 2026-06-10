@@ -47,7 +47,7 @@
 \lstset{style=mystyle}
 
 \title{\textbf{Proyecto Final MITEX: CulinaryRAG}\\Sistema de soporte inteligente y recomendación conversacional de recetas}
-\author{}
+\author{David Fernandez Prieto \\ Daniel Barandela Cachafeiro \\ Tomas Rial Costa \\ Ventura Ruibal Cancio}
 \date{Curso 2025/2026}
 
 \begin{document}
@@ -249,7 +249,9 @@ El diseño del sistema ha sido validado analíticamente comparando sus mecanismo
 
 \begin{itemize}
     \item \textbf{Recuperación Híbrida vs. Baseline Vectorial:} un sistema RAG \textit{baseline} suele basarse exclusivamente en búsqueda densa (ej. ChromaDB). En nuestras pruebas tempranas, este enfoque devolvía recetas semánticamente similares pero fallaba en retener ingredientes obligatorios (falsos positivos). La introducción del \textit{baseline} léxico (BM25) fusionado mediante RRF demostró ser superior, al anclar términos exactos mientras la red densa generaliza el contexto.
-    \item \textbf{TextRank vs. Baseline Ingesta Completa:} como \textit{baseline} de resumen, se evaluó inyectar todas las reseñas crudas directamente al contexto del LLM. Esto disparaba el consumo de VRAM por encima de los 12GB y degradaba la precisión de la respuesta por el efecto \textit{lost in the middle}. \textcolor{red}{El uso de TextRank redujo significativamente la carga de tokens sin perder la intención general de la comunidad.}
+    \item \textbf{TextRank vs. Baseline Ingesta Completa:} como \textit{baseline} de resumen, se evaluó inyectar todas las reseñas crudas directamente al contexto del LLM. Esto disparaba el consumo de VRAM por encima de los 12GB y degradaba la precisión de la respuesta por el efecto \textit{lost in the middle}. El uso de TextRank redujo significativamente la carga de tokens sin perder la intención general de la comunidad.
+    \item \textcolor{red}{\textbf{Múltiples Prompts Dinámicos vs. Megacomando Único:} en la fase de pruebas empíricas, se evaluó saturar al modelo con un único prompt generalista de gran tamaño frente a prompts más pequeños inyectados dinámicamente según la tarea enrutada. Los resultados demostraron que el enrutamiento a prompts dinámicos reducía significativamente las alucinaciones y mejoraba drásticamente la calidad de las respuestas en modelos pequeños.}
+    \item \textcolor{red}{\textbf{BERTopic Guiado vs. Clustering Ciego:} para asegurar la cohesión temática, se creó un script de visualización que generaba mapas interactivos de \textit{embeddings}. La inspección empírica de las visualizaciones permitió comparar los clústeres de BERTopic generados de forma automática (ciegos) frente a los generados inyectando semillas (\textit{zeroshot\_topic\_list}), confirmando que la versión con semillas forzaba agrupaciones mucho más lógicas y afines a categorías culinarias reales.}
 \end{itemize}
 
 \subsection{Validación Funcional por Módulos}
