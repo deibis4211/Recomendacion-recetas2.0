@@ -1,6 +1,6 @@
 # CulinaryRAG: Sistema Inteligente de Recomendación de Recetas
 
-CulinaryRAG es un sistema avanzado de soporte conversacional y recomendación de recetas desarrollado como proyecto final para el Máster en Innovación Tecnológica (MITEX). 
+CulinaryRAG es un sistema avanzado de soporte conversacional y recomendación de recetas. 
 
 Este sistema emplea una arquitectura híbrida que combina técnicas clásicas de minería de textos con modelos neuronales modernos. Integra representaciones vectoriales densas (embeddings), modelado de tópicos (BERTopic), búsqueda léxica (BM25), Fusión de Rangos Recíprocos (RRF), resumen extractivo (TextRank), Generación Aumentada por Recuperación (RAG), un Modelo de Lenguaje de Gran Escala (LLM) local y un enrutador agéntico de herramientas para proporcionar una experiencia de usuario robusta y precisa.
 
@@ -8,9 +8,8 @@ Este sistema emplea una arquitectura híbrida que combina técnicas clásicas de
 
 ## Arquitectura y Cumplimiento de Requisitos
 
-El sistema ha sido diseñado para cumplir estrictamente con los requisitos técnicos y arquitectónicos especificados en las directrices del proyecto:
 
-| Requisito Técnico | Detalles de Implementación |
+| Módulo | Detalles de Implementación |
 | :--- | :--- |
 | **Embeddings Densos** | El componente `modules/retriever.py` genera representaciones vectoriales densas usando `SentenceTransformer` y las persiste en una base de datos vectorial local `ChromaDB`. |
 | **Modelado de Tópicos** | El componente `modules/topics.py` entrena un modelo `BERTopic` offline usando muestreo estratificado para asignar tópicos latentes a las recetas. |
